@@ -1,37 +1,36 @@
-from math import atan2, degrees, floor, asin, sin, cos, acos, radians
-from collections import deque
-from time import sleep
 from datetime import datetime
+from time import sleep
 
-import numpy as np
 import cv2
-import vrep
+import numpy as np
 
+from controllers import can_reach
+from functions import pinhole_projection, inv_pinhole_projection, yaw_rotation, pitch_rotation, Direction
 from pid import PID
-from controllers import rotate_towards, can_reach
-from vrep_object import VRepConnection, VRepObject
-from functions import sph2cart, pinhole_projection, inv_pinhole_projection, yaw_rotation, pitch_rotation, Direction
+from vrep_object import VRepConnection
+
 
 def radius(dist):
     return max(int(120 // dist), 1)
 
+
 def line(start, end):
     def bresenham(start, end):
         dx, dy = abs(end[0] - start[0]), -abs(end[1] - start[1])
-        err = dx+dy
+        err = dx + dy
         x, y = start
         while x != end[0] or y != end[1]:
-            yield(x,y)
-            e2 = 2*err
+            yield (x, y)
+            e2 = 2 * err
             if e2 >= dy:
                 err += dy
                 x += sign_x
             if e2 <= dx:
                 err += dx
                 y += sign_y
-        yield(end)
+        yield (end)
 
-    sign = lambda x,y: 2*int(x<y) -1
+    sign = lambda x, y: 2 * int(x < y) - 1
     """sign(x,y) = -1 iff x<=y; 1 otherwise"""
     sign_x = sign(start[0], end[0])
     sign_y = sign(start[1], end[1])
@@ -43,15 +42,17 @@ def line(start, end):
         else:
             return bresenham(start, end)
 
+
 def find_in_matrix(mat, start, end, condition):
     """
     Returns the first element of `mat` that satisfies `condition`.
     `condition` must return a bool.
     """
-    for X,Y in line(start, end):
+    for X, Y in line(start, end):
         if condition(mat[Y, X]):
-            return np.array((X,Y)), mat[Y, X]
+            return np.array((X, Y)), mat[Y, X]
     return None, None
+
 
 def find_in_matrix_qualitative(mat, start, direction, condition):
     """
@@ -75,6 +76,7 @@ def find_in_matrix_qualitative(mat, start, direction, condition):
         start += step
     return None, None
 
+
 def depth_based_dilation(im):
     """Dilates a float image according to pixel depth.
 
@@ -86,17 +88,19 @@ def depth_based_dilation(im):
 
     for i in np.arange(1, 0.1, -0.1):
         im_slice = im.copy()
-        im_slice[(im_slice<=i-0.1) | (im_slice>i)] = 0
-        #prova[prova<i-0.1] = 0
+        im_slice[(im_slice <= i - 0.1) | (im_slice > i)] = 0
+        # prova[prova<i-0.1] = 0
 
-        ksize = 2*radius((i-0.1)*MAX_DEPTH)
+        ksize = 2 * radius((i - 0.1) * MAX_DEPTH)
 
-        ker = np.ones((ksize,ksize), np.uint8)
+        ker = np.ones((ksize, ksize), np.uint8)
         im_slice = cv2.dilate(im_slice, ker)
 
         # Replace "older" values
-        acc = np.where(im_slice!=0, im_slice, acc)
+        acc = np.where(im_slice != 0, im_slice, acc)
     return acc
+
+
 #############################################################
 
 # V-REP Server address
@@ -117,7 +121,7 @@ camera_settings = {
     "y_angle": 45
 }
 
-pid = PID(4.5, 0.01, 0.1, 3, 0.1, max_int= 10)
+pid = PID(4.5, 0.01, 0.1, 3, 0.1, max_int=10)
 total_distance = 0
 
 # Init connection and objects
@@ -137,7 +141,6 @@ while True:
         print(exc)
         continue
 
-
 # Main control loop
 while True:
     try:
@@ -148,9 +151,9 @@ while True:
         delta = goal.get_position(drone.handle)
     except ConnectionError as exc:
         # Server is busy, try again
-        print(exc) 
+        print(exc)
         continue
-    
+
     h_dist = np.linalg.norm(delta[0:2])
     v_dist = abs(delta[2])
 
@@ -194,21 +197,20 @@ while True:
         client.create_dummy(goal.get_position(), 0.5)
         client.create_dummy(target.get_position(), 0.2)
 
-
         t = datetime.now()
         dist, azimuth, elevation = goal.get_spherical(drone.handle, sensor_offset)
         X, Y = pinhole_projection(azimuth, elevation, camera_settings)
 
         light_zone = depth_based_dilation(d)
-        avg_depth = min(0.9, ((min_depth + h_dist)/2)/MAX_DEPTH)
+        avg_depth = min(0.9, ((min_depth + h_dist) / 2) / MAX_DEPTH)
         light_zone[light_zone <= avg_depth] = 0
         light_zone[light_zone > avg_depth] = 1
 
         distances = cv2.distanceTransform(light_zone.astype(np.uint8), cv2.DIST_L1, 3)
-        candidates = np.column_stack(np.nonzero(distances==1))
+        candidates = np.column_stack(np.nonzero(distances == 1))
         if not candidates.size:
             print("No valid point for current view.")
-            cv2.imshow('view', (depth_based_dilation(d)*255).astype(np.uint8))
+            cv2.imshow('view', (depth_based_dilation(d) * 255).astype(np.uint8))
             print(min_depth, h_dist)
             print(avg_depth)
             cv2.waitKey()
@@ -217,35 +219,34 @@ while True:
             break
 
         else:
-            Y_p, X_p = min(candidates, key=lambda x: np.linalg.norm(np.array([Y,X]) - x) + 0.1*abs(Y-x[0]))
+            Y_p, X_p = min(candidates, key=lambda x: np.linalg.norm(np.array([Y, X]) - x) + 0.1 * abs(Y - x[0]))
             new_azimuth, new_elevation = inv_pinhole_projection(X_p, Y_p, camera_settings)
-            
+
             # Invert the Y coordinates since images use a left-hand system:
             # (0,0) is top-left
 
-            direction = Direction.get(np.array([X,-Y]), relative_to=np.array([X_p, -Y_p]))
+            direction = Direction.get(np.array([X, -Y]), relative_to=np.array([X_p, -Y_p]))
             __, val = find_in_matrix(d, (Y_p, X_p), (Y, X), lambda x: x <= avg_depth)
-            val = val or min_depth/MAX_DEPTH
+            val = val or min_depth / MAX_DEPTH
 
             new_dist = min(val * MAX_DEPTH + RADIUS, h_dist)
 
             # TODO check original depth map for depth @ X_p, Y_p
-            if d[Y_p, X_p] < 1 and d[Y_p, X_p]*MAX_DEPTH - new_dist < RADIUS:
+            if d[Y_p, X_p] < 1 and d[Y_p, X_p] * MAX_DEPTH - new_dist < RADIUS:
                 new_dist = d[Y_p, X_p] - RADIUS
 
-
             # Apply two 3d rotations to the unit vector so it points to the new goal
-            unit_vec = np.array([1,0,0], np.float32)
+            unit_vec = np.array([1, 0, 0], np.float32)
             unit_vec = yaw_rotation(unit_vec, new_azimuth)
             unit_vec = pitch_rotation(unit_vec, new_elevation)
 
-            new_delta = unit_vec * new_dist 
+            new_delta = unit_vec * new_dist
 
             ### DEBUG LOGS, remove in production ####################
             print("REPLANNING TIME:", datetime.now() - t)
             d1 = np.array(d)
             for y, x in candidates:
-                d1 = cv2.circle(d1, (x,y), 1, 0, 2)
+                d1 = cv2.circle(d1, (x, y), 1, 0, 2)
             d1 = cv2.circle(d1, (X_p, Y_p), 7, 1, -1)
 
             print("OLD ", dist, azimuth, elevation)
@@ -253,7 +254,7 @@ while True:
             print("min_depth:", min_depth)
             print("direction:", direction)
 
-            cv2.imshow('view', d1+mask)
+            cv2.imshow('view', d1 + mask)
             cv2.waitKey()
 
             ### END DEBUG LOGS ######################################
@@ -263,7 +264,7 @@ while True:
                     break
                 except ConnectionError:
                     continue
-            pid.reset() # Because the goal has changed
+            pid.reset()  # Because the goal has changed
 
 cv2.destroyAllWindows()
 
