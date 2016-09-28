@@ -1,3 +1,4 @@
+from _hashlib import new
 from datetime import datetime
 from time import sleep
 
@@ -7,11 +8,11 @@ import numpy as np
 from controllers import can_reach
 from functions import pinhole_projection, inv_pinhole_projection, yaw_rotation, pitch_rotation, Direction
 from pid import PID
-from vrep_object import VRepConnection
-
+from vrep_object import VRepClient
+from drone import Drone
 
 def radius(dist):
-    return max(int(120 // dist), 1)
+    return max(int(150 // dist), 1)
 
 
 def line(start, end):
@@ -89,7 +90,6 @@ def depth_based_dilation(im):
     for i in np.arange(1, 0.1, -0.1):
         im_slice = im.copy()
         im_slice[(im_slice <= i - 0.1) | (im_slice > i)] = 0
-        # prova[prova<i-0.1] = 0
 
         ksize = 2 * radius((i - 0.1) * MAX_DEPTH)
 
@@ -121,38 +121,31 @@ camera_settings = {
     "y_angle": 45
 }
 
-pid = PID(4.5, 0.01, 0.1, 3, 0.1, max_int=10)
+pid = PID(4.5, 0.01, 0.1, 3, 0.15, max_int=10)
 total_distance = 0
 
 # Init connection and objects
-client = VRepConnection(HOST, PORT)
-while True:
-    try:
-        goal = client.get_object("Goal")
-        target = client.get_object("Quadricopter_target")
-        drone = client.get_object("Quadricopter_base")
-        sensor = client.get_depth_sensor("SR4000_sensor")
+client = VRepClient(HOST, PORT)
 
-        # Save real goal position for later
-        end_goal = goal.get_position()
+goal = client.get_object("Goal")
+target = client.get_object("Quadricopter_target")
+drone = client.get_object("Quadricopter_base")
+sensor = client.get_depth_sensor("SR4000_sensor")
 
-        break
-    except ConnectionError as exc:
-        print(exc)
-        continue
+# Save real goal position for later
+end_goal = goal.get_position()
 
 # Main control loop
+
+new_drone = Drone(client)
+new_drone.lock(goal)
+
 while True:
-    try:
-        # Get current data from server
-        goal_pos = goal.get_position()
-        target_pos = target.get_position()
-        sensor_offset = - drone.get_position(sensor.handle)
-        delta = goal.get_position(drone.handle)
-    except ConnectionError as exc:
-        # Server is busy, try again
-        print(exc)
-        continue
+    # Get current data from server
+    goal_pos = goal.get_position()
+    target_pos = target.get_position()
+    sensor_offset = - drone.get_position(sensor)
+    delta = goal.get_position(drone)
 
     h_dist = np.linalg.norm(delta[0:2])
     v_dist = abs(delta[2])
@@ -160,49 +153,45 @@ while True:
     if h_dist < EPS:
         print("Goal reached! Total distance: {} m".format(total_distance))
         if not np.array_equal(goal_pos, end_goal):
-            try:
-                client.create_dummy(goal.get_position(), 0.5)
-                goal.set_position(end_goal)
-                pid.reset()
-                sleep(3)
-            except ConnectionError as exc:
-                print(exc)
-            continue
+            #client.create_dummy(goal.get_position(), 0.5)
+            goal.set_position(end_goal)
+            pid.reset()
+            new_drone.lock(goal)
         else:
             break
 
-    reachable, d, min_depth, mask = can_reach(goal, target, drone, sensor_offset, sensor)
+
+    #reachable, d, min_depth, mask = can_reach(goal, target, drone, sensor_offset, sensor)
+    reachable, d, min_depth, mask = new_drone.can_reach(goal)
+    cv2.imshow('view', d)
+    cv2.waitKey(1)
+
     if reachable:
         print("Reachable,", h_dist)
         # Goal is reachable!
-        try:
-            target_pos = target.get_position()
-            correction = pid.control(-target.get_position(goal.handle))
-            total_distance += np.linalg.norm(correction)
-            target.set_position(target_pos + correction)
-        except ConnectionError:
-            continue
+        target_pos = target.get_position()
+        correction = pid.control(-target.get_position(goal))
+        total_distance += np.linalg.norm(correction)
+        target.set_position(target_pos + correction)
     elif abs(h_dist - min_depth) < RADIUS:
         if np.array_equal(goal_pos, end_goal):
             print("Goal considered unsafe.")
             break
         else:
-            try:
-                print("Temporary goal considered unsafe. Re-evaluating...")
-                goal.set_position(end_goal)
-            except ConnectionError:
-                continue
+            print("Temporary goal considered unsafe. Re-evaluating...")
+            goal.set_position(end_goal)
     else:
-        # Graph replanning point and old waypoint
-        client.create_dummy(goal.get_position(), 0.5)
-        client.create_dummy(target.get_position(), 0.2)
+        new_drone.stabilize()
+        # Mark current position and old waypoint
+        # client.create_dummy(goal.get_position(), 0.5)
+        # client.create_dummy(target.get_position(), 0.2)
 
         t = datetime.now()
-        dist, azimuth, elevation = goal.get_spherical(drone.handle, sensor_offset)
-        X, Y = pinhole_projection(azimuth, elevation, camera_settings)
+        dist, azimuth, elevation = goal.get_spherical(drone, sensor_offset)
+        X, Y = pinhole_projection(azimuth, elevation)
 
         light_zone = depth_based_dilation(d)
-        avg_depth = min(0.9, ((min_depth + h_dist) / 2) / MAX_DEPTH)
+        avg_depth = min(0.999, ((min_depth + h_dist) / 2) / MAX_DEPTH)
         light_zone[light_zone <= avg_depth] = 0
         light_zone[light_zone > avg_depth] = 1
 
@@ -213,14 +202,12 @@ while True:
             cv2.imshow('view', (depth_based_dilation(d) * 255).astype(np.uint8))
             print(min_depth, h_dist)
             print(avg_depth)
-            cv2.waitKey()
             # TODO wall-following algorithm
             goal.set_position(end_goal)
             break
-
         else:
             Y_p, X_p = min(candidates, key=lambda x: np.linalg.norm(np.array([Y, X]) - x) + 0.1 * abs(Y - x[0]))
-            new_azimuth, new_elevation = inv_pinhole_projection(X_p, Y_p, camera_settings)
+            new_azimuth, new_elevation = inv_pinhole_projection(X_p, Y_p)
 
             # Invert the Y coordinates since images use a left-hand system:
             # (0,0) is top-left
@@ -228,6 +215,9 @@ while True:
             direction = Direction.get(np.array([X, -Y]), relative_to=np.array([X_p, -Y_p]))
             __, val = find_in_matrix(d, (Y_p, X_p), (Y, X), lambda x: x <= avg_depth)
             val = val or min_depth / MAX_DEPTH
+
+            print("->", val)
+            print("->", avg_depth)
 
             new_dist = min(val * MAX_DEPTH + RADIUS, h_dist)
 
@@ -254,16 +244,12 @@ while True:
             print("min_depth:", min_depth)
             print("direction:", direction)
 
-            cv2.imshow('view', d1 + mask)
-            cv2.waitKey()
+            #cv2.imshow('view', d1 + mask)
+            #cv2.waitKey()
 
             ### END DEBUG LOGS ######################################
-            while True:
-                try:
-                    goal.set_position(new_delta, drone.handle)
-                    break
-                except ConnectionError:
-                    continue
+            goal.set_position(new_delta, drone)
+            #new_drone.lock(goal)
             pid.reset()  # Because the goal has changed
 
 cv2.destroyAllWindows()

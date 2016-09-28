@@ -8,7 +8,7 @@ from functions import sph2cart, pinhole_projection, inv_pinhole_projection, yaw_
 from pid import PID
 
 def radius(dist):
-    return max(int(120 // dist), 1)
+    return max(int(150 // dist), 1)
 
 def rotate_towards(goal, target, drone, offset):
     """Rotates the drone until it points towards the goal.
@@ -19,14 +19,13 @@ def rotate_towards(goal, target, drone, offset):
     `sensor_offset`: position of the sensor relative to the drone. Needed for a
     better azimuth value.
     """
-    GOOD = 5 # Degrees
-    azimuth = 2*GOOD
+    GOOD = azimuth = 3 # Degrees
     rotation_pid = PID(0.3, 0.05, 0.5, 1, max_int=3)
 
-    while abs(azimuth) > GOOD:
+    while abs(azimuth) >= GOOD:
         try:
             euler = target.get_orientation()
-            __, azimuth, __ = goal.get_spherical(drone.handle, offset)
+            __, azimuth, __ = goal.get_spherical(drone, offset)
         except ConnectionError:
             continue
         correction_angle = rotation_pid.control(azimuth)
@@ -34,7 +33,7 @@ def rotate_towards(goal, target, drone, offset):
         euler[2] += radians(correction_angle) # euler[2] = Yaw 
         try:
             target.set_orientation(euler)
-            sleep(1)
+            sleep(1.5)
         except ConnectionError:
             continue
     else:
@@ -48,7 +47,7 @@ def altitude_adjust(goal, target, drone):
     err = 2*GOOD
     while abs(err) > GOOD:
         try:
-            goal_pos = goal.get_position(target.handle)
+            goal_pos = goal.get_position(target)
             err = goal_pos[2] # z-coordinate
             correction = altitude_pid.control(err)
             print("Adjusting altitude...", correction)
@@ -72,38 +71,15 @@ camera_settings = {
 }
 MAX_DEPTH = 10
 
+
 def can_reach(goal, target, drone, sensor_offset, sensor):
-    # Rotate the drone if target out of FOV
-    MAX_ANGLE = 45
-    while True:
-        try:
-            dist, azimuth, elevation = goal.get_spherical(drone.handle, sensor_offset)
-            delta = goal.get_position(target.handle)
-            break
-        except ConnectionError:
-            continue
-    X, Y = pinhole_projection(azimuth, elevation, camera_settings)
+    dist, azimuth, elevation = goal.get_spherical(drone, sensor_offset)
+    delta = goal.get_position(target)
     h_dist = np.linalg.norm(delta[0:2])
-    v_dist = delta[2]
 
-    if abs(elevation) > MAX_ANGLE:
-        altitude_adjust(goal, target, drone)
+    res, d = sensor.get_depth_buffer()
 
-    if  dist > 1 and (
-        abs(azimuth) > MAX_ANGLE 
-        or not (0<= X <= camera_settings["x_res"])
-        ):
-        rotate_towards(goal, target, drone, sensor_offset)
-    while True:
-        try:
-            res, d = sensor.get_depth_buffer()
-            d = np.array(d, np.float32).reshape((res[1], res[0]))
-            d = np.flipud(d) # the depth buffer is upside-down
-            dist, azimuth, elevation = goal.get_spherical(drone.handle, sensor_offset)
-            break
-        except ConnectionError as exc:
-            continue
-    X, Y = pinhole_projection(azimuth, elevation, camera_settings)
+    X, Y = pinhole_projection(azimuth, elevation)
     ball_r = radius(dist)
     mask = cv2.circle(np.zeros_like(d), (X,Y), ball_r, 1, -1)
 
