@@ -82,7 +82,7 @@ class VRepObject():
             raise ConnectionError(self._check_errors(ret))
 
     @log_and_retry
-    def get_spherical(self, other: "VRepObject" = None, offset: np.ndarray = [0, 0, 0]) -> object:
+    def get_spherical(self, other: "VRepObject" = None, offset: object = [0, 0, 0]) -> object:
         """Spherical coordinates of object.
 
         Azimuth is CCW from X axis.

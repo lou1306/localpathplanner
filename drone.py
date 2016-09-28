@@ -13,7 +13,7 @@ from functions import pinhole_projection
 def radius(dist):
     return max(int(150 // dist), 1)
 
-class Drone():
+class Drone(VRepObject):
     MAX_ANGLE = 45 # degrees
     MAX_DEPTH = 10 # meters
     RADIUS = 0.5 # meters
@@ -23,10 +23,14 @@ class Drone():
         self._target = client.get_object("Quadricopter_target")
         self._body = client.get_object("Quadricopter_base")
         self._sensor = client.get_depth_sensor("SR4000_sensor")
-        self._sensor_offset = - self._body.get_position(self._sensor)
 
         self._rotation_pid = PID(0.2, 0.05, 0.2, 1, max_int=3)
         self._altitude_pid = PID(0.2, 0.02, 0.2, 1)
+        self._pid = PID(4.5, 0.01, 0.1, 3, 0.15, max_int=10)
+
+        self.total_distance = 0
+        self.sensor_offset = - self._body.get_position(self._sensor)
+        self.handle = self._body.handle
 
     def altitude_adjust(self, goal: VRepObject) -> object:
         GOOD = err =  0.5  # meters
@@ -34,16 +38,18 @@ class Drone():
             goal_pos = goal.get_position(self._body)
             err = goal_pos[2]  # z-coordinate
             correction = self._altitude_pid.control(err)
-            print("Adjusting altitude...", correction)
+            if __debug__:
+                print("Adjusting altitude...", correction)
             self._target.set_position(self._target.get_position() + np.array([0, 0, correction]))
             sleep(1)
         else:
-            print("...Adjusted. Goal at {} m".format(err))
+            if __debug__:
+                print("...Adjusted. Goal at {} m".format(err))
             self._altitude_pid.reset()
             sleep(2)  # Wait for the drone to stabilize
 
     def can_reach(self, goal: VRepObject):
-        dist, azimuth, elevation = goal.get_spherical(self._body, self._sensor_offset)
+        dist, azimuth, elevation = goal.get_spherical(self._body, self.sensor_offset)
         #delta = goal.get_position(self._target)
         #h_dist = np.linalg.norm(dist[0:2])
         h_dist = dist * np.cos(elevation)
@@ -60,6 +66,11 @@ class Drone():
             raise ValueError
         return h_dist < 1 or dist - min_depth < -0.5 or min_depth == self.MAX_DEPTH, d, min_depth, mask
 
+    def reset_controllers(self):
+        self._pid.reset()
+        self._altitude_pid.reset()
+        self._rotation_pid.reset()
+
     def rotate_towards(self, goal: VRepObject):
         """Rotates the drone until it points towards the goal.
 
@@ -72,28 +83,40 @@ class Drone():
         GOOD = azimuth = 5 # Degrees
         while abs(azimuth) >= GOOD:
             euler = self._target.get_orientation()
-            __, azimuth, __ = goal.get_spherical(self._body, self._sensor_offset)
+            __, azimuth, __ = goal.get_spherical(self._body, self.sensor_offset)
             correction_angle = self._rotation_pid.control(azimuth)
-            print("Adjusting orientation...", correction_angle)
+            if __debug__:
+                print("Adjusting orientation...", correction_angle)
             euler[2] += radians(correction_angle) # euler[2] = Yaw
             self._target.set_orientation(euler)
             sleep(1)
         else:
-            print("...Adjusted. Goal at {}°".format(azimuth))
+            if __debug__:
+                print("...Adjusted. Goal at {}°".format(azimuth))
             self._rotation_pid.reset()
             self.stabilize() # Wait for the drone to stabilize on the new angle
 
     def lock(self, goal: VRepObject):
-        __, __, elevation = goal.get_spherical(self._body, self._sensor_offset)
+        __, __, elevation = goal.get_spherical(self._body, self.sensor_offset)
         if abs(elevation) > self.MAX_ANGLE:
             self.altitude_adjust(goal)
         self.rotate_towards(goal)
 
     def stabilize(self):
         EPS = 0.001
-        print("UAV stabilization in progress...")
+        if __debug__:
+            print("UAV stabilization in progress...")
         while True:
             lin_v, ang_v = self._body.get_velocity()
             if all(i < EPS for i in lin_v) and all(i < EPS for i in ang_v):
-                print("...done.")
+                if __debug__:
+                    print("...done.")
                 return
+            else:
+                sleep(0.05)
+
+    def step_towards(self, goal: VRepObject):
+        target_pos = self._target.get_position()
+        correction = self._pid.control(-self._target.get_position(goal))
+        self.total_distance += np.linalg.norm(correction)
+        self._target.set_position(target_pos + correction)

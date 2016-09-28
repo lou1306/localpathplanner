@@ -96,3 +96,65 @@ def pitch_rotation(vec, angle):
         [-s, 9, c]
     ])
     return vec @ pitch_matrix
+
+def line(start, end):
+    def bresenham(start, end):
+        dx, dy = abs(end[0] - start[0]), -abs(end[1] - start[1])
+        err = dx + dy
+        x, y = start
+        while x != end[0] or y != end[1]:
+            yield (x, y)
+            e2 = 2 * err
+            if e2 >= dy:
+                err += dy
+                x += sign_x
+            if e2 <= dx:
+                err += dx
+                y += sign_y
+        yield (end)
+
+    sign = lambda x, y: 2 * int(x < y) - 1
+    """sign(x,y) = -1 iff x<=y; 1 otherwise"""
+    sign_x = sign(start[0], end[0])
+    sign_y = sign(start[1], end[1])
+    if start[0] == end[0]:
+        return ((start[0], i) for i in range(start[1], end[1] + sign_y, sign_y))
+    else:
+        if start[1] == end[1]:
+            return ((i, start[1]) for i in range(start[0], end[0] + sign_x, sign_x))
+        else:
+            return bresenham(start, end)
+
+
+def find_in_matrix(mat, start, end, condition):
+    """
+    Returns the first element of `mat` that satisfies `condition`.
+    `condition` must return a bool.
+    """
+    for X, Y in line(start, end):
+        if condition(mat[Y, X]):
+            return np.array((X, Y)), mat[Y, X]
+    return None, None
+
+
+def find_in_matrix_qualitative(mat, start, direction, condition):
+    """
+    Returns the first element of `mat` that satisfies `condition`.
+    The matrix is scanned according to `direction`.
+    `condition` must return a bool.
+    Throws an IndexError when no element matches the given condition in the
+    given direction.
+    """
+    step = {
+        Direction.N: (0, -1),
+        Direction.NW: (-1, -1),
+        Direction.W: (-1, 0),
+        Direction.SW: (-1, 1),
+        Direction.S: (0, 1),
+        Direction.SE: (1, 1),
+        Direction.E: (0, 1),
+        Direction.NE: (1, -1),
+    }[direction]
+    while not condition(mat[start[1], start[0]]):
+        start += step
+    return None, None
