@@ -41,6 +41,7 @@ class Drone(VRepObject):
             if __debug__:
                 print("Adjusting altitude...", correction)
             self._target.set_position(self._target.get_position() + np.array([0, 0, correction]))
+            self.total_distance += np.linalg.norm(correction)
             sleep(1)
         else:
             if __debug__:
