@@ -25,9 +25,9 @@ def depth_based_dilation(im):
         im_slice = im.copy()
         im_slice[(im_slice <= i - 0.1) | (im_slice > i)] = 0
 
-        ksize = 2 * radius((i - 0.1) * MAX_DEPTH)
+        ker_size = 2 * radius((i - 0.1) * MAX_DEPTH)
 
-        ker = np.ones((ksize, ksize), np.uint8)
+        ker = np.ones((ker_size, ker_size), np.uint8)
         im_slice = cv2.dilate(im_slice, ker)
 
         # Replace "older" values
@@ -79,22 +79,20 @@ while True:
     v_dist = abs(delta[2])
 
     if h_dist < EPS:
-        if __debug__:
-            print("Goal reached! Total distance: {} m".format(drone.total_distance))
         goal_pos = goal.get_position()
         if not np.array_equal(goal_pos, end_goal):
-            # client.create_dummy(goal.get_position(), 0.5)
+            if __debug__:
+                print("Goal reached! Total distance: {} m".format(drone.total_distance))
             goal.set_position(end_goal)
             drone.reset_controllers()
             drone.lock(goal)
             continue
         else:
             print("Goal reached! Total distance: {} m".format(drone.total_distance))
+            print("Total time:", datetime.now() - start_time)
             break
 
     reachable, d, min_depth, mask = drone.can_reach(goal)
-    cv2.imshow('view', d)
-    cv2.waitKey(1)
 
     if reachable:
         if __debug__:
@@ -161,9 +159,9 @@ while True:
 
             new_delta = unit_vec * new_dist
             goal.set_position(new_delta, drone)
+            goal.duplicate()
             drone.reset_controllers()
 
-            ### DEBUG LOGS ####################
             if __debug__:
                 print("REPLANNING TIME:", datetime.now() - t)
                 d1 = np.array(d)
@@ -174,10 +172,6 @@ while True:
                 print("OLD ", dist, azimuth, elevation)
                 print("NEW ", new_dist, new_azimuth, new_elevation)
                 print("min_depth:", min_depth)
-
-                # cv2.imshow('view', d1 + mask)
-                # cv2.waitKey()
-            ### END DEBUG LOGS ######################################
 
 cv2.destroyAllWindows()
 
