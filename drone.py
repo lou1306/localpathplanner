@@ -121,3 +121,25 @@ class Drone(VRepObject):
         correction = self._pid.control(-self._target.get_position(goal))
         self.total_distance += np.linalg.norm(correction)
         self._target.set_position(target_pos + correction)
+
+
+    def escape(self, goal):
+        self.rotate(60)
+        __, d = self._sensor.get_depth_buffer()
+        left_space = len(d[d==1])
+        self.rotate(-120)
+        __, d = self._sensor.get_depth_buffer()
+        right_space = len(d[d == 1])
+        go_left = left_space >= right_space
+
+
+    def rotate(self, angle: float):
+        self._rotation_pid.reset()
+        while abs(angle) > 2:
+            euler = self._target.get_orientation()
+            correction = self._rotation_pid.control(angle)
+            angle -= correction
+            euler[2] += radians(correction)  # euler[2] = Yaw
+            self._target.set_orientation(euler)
+            sleep(1)
+        self.stabilize()
