@@ -56,9 +56,8 @@ class Drone(VRepObject):
 
     def can_reach(self, goal: VRepObject):
         dist, azimuth, elevation = goal.get_spherical(self._body, self.sensor_offset)
-        #delta = goal.get_position(self._target)
-        #h_dist = np.linalg.norm(dist[0:2])
-        h_dist = dist * np.cos(elevation)
+        delta = goal.get_position(self._target)
+        h_dist = np.linalg.norm(delta[0:2])
 
         res, d = self._sensor.get_depth_buffer()
 
@@ -69,7 +68,8 @@ class Drone(VRepObject):
             min_depth = np.min(d[mask == 1]) * self.MAX_DEPTH
         except ValueError:
             # Mask has no white pixel.
-            raise ValueError
+            self.lock(goal)
+            return self.can_reach(goal)
         return h_dist < 1 or dist - min_depth < -0.5 or min_depth == self.MAX_DEPTH, d, min_depth, mask
 
     def reset_controllers(self):
@@ -103,8 +103,9 @@ class Drone(VRepObject):
             self.stabilize() # Wait for the drone to stabilize on the new angle
 
     def lock(self, goal: VRepObject):
-        __, __, elevation = goal.get_spherical(self._body, self.sensor_offset)
-        if abs(elevation) > self.MAX_ANGLE:
+        __, azimuth, elevation = goal.get_spherical(self._body, self.sensor_offset)
+        X, Y = pinhole_projection(azimuth, elevation)
+        if abs(elevation) > self.MAX_ANGLE or not 0 <= Y < 256:
             self.altitude_adjust(goal)
         self.rotate_towards(goal)
 
