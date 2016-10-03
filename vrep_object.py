@@ -33,24 +33,8 @@ class VRepError(Enum):
     LOCAL_ERROR = 32
     INIT_ERROR = 64
 
-
-class VRepObject():
-    """
-    Simple wrapper around the V-Rep Remote API
-    """
-    BLOCK = vrep.simx_opmode_blocking
-
-    def __init__(self, client_id: int, name: str):
-        self.client_id = client_id
-        self.name = name
-        ret, handle = vrep.simxGetObjectHandle(client_id, name, self.BLOCK)
-        if ret == 0:
-            self.handle = handle
-        else:
-            raise ConnectionError(self._check_errors(ret))
-
     @staticmethod
-    def _check_errors(return_value: int) -> Tuple:
+    def create(return_value: int) -> Tuple:
         """
         Returns all the errors associated with a return value.
         """
@@ -61,13 +45,25 @@ class VRepObject():
                 err for err in VRepError
                 if bool(return_value & err.value))
 
+
+class VRepObject():
+    """
+    Simple wrapper around the V-Rep Remote API
+    """
+    BLOCK = vrep.simx_opmode_blocking
+
+    def __init__(self, client_id: int, handle: int, name: str):
+        self.client_id = client_id
+        self.name = name
+        self.handle = handle
+
     @log_and_retry
     def duplicate(self):
         ret, handles = vrep.simxCopyPasteObjects(self.client_id, [self.handle], self.BLOCK)
         if ret == 0:
             return handles
         else:
-            raise ConnectionError(self._check_errors(ret))
+            raise ConnectionError(VRepError.create(ret))
 
     @log_and_retry
     def get_position(self, other: "VRepObject" = None):
@@ -84,7 +80,7 @@ class VRepObject():
         if ret == 0:
             return np.array(pos, np.float32)
         else:
-            raise ConnectionError(self._check_errors(ret))
+            raise ConnectionError(VRepError.create(ret))
 
     @log_and_retry
     def get_velocity(self) -> Tuple:
@@ -92,7 +88,7 @@ class VRepObject():
         if ret == 0:
             return np.array(linear, np.float32), np.array(angular, np.float32)
         else:
-            raise ConnectionError(self._check_errors(ret))
+            raise ConnectionError(VRepError.create(ret))
 
     @log_and_retry
     def get_spherical(self, other: "VRepObject" = None, offset: object = [0, 0, 0]) -> object:
@@ -133,7 +129,7 @@ class VRepObject():
         if ret == 0:
             return np.array(euler, np.float32)
         else:
-            raise ConnectionError(self._check_errors(ret))
+            raise ConnectionError(VRepError.create(ret))
 
     @log_and_retry
     def set_position(self, pos, other: "VRepObject" = None):
@@ -147,7 +143,7 @@ class VRepObject():
 
         ret = vrep.simxSetObjectPosition(self.client_id, self.handle, handle, pos, self.BLOCK)
         if ret != 0:
-            raise ConnectionError(self._check_errors(ret))
+            raise ConnectionError(VRepError.create(ret))
 
     @log_and_retry
     def set_orientation(self, euler: Tuple[float, float, float]):
@@ -156,7 +152,7 @@ class VRepObject():
         """
         ret = vrep.simxSetObjectOrientation(self.client_id, self.handle, -1, euler, self.BLOCK)
         if ret != 0:
-            raise ConnectionError(self._check_errors(ret))
+            raise ConnectionError(VRepError.create(ret))
 
 
 class VRepDepthSensor(VRepObject):
@@ -164,7 +160,7 @@ class VRepDepthSensor(VRepObject):
     def get_depth_buffer(self) -> np.ndarray:
         ret, res, d = vrep.simxGetVisionSensorDepthBuffer(self.client_id, self.handle, self.BLOCK)
         if ret != 0:
-            raise ConnectionError(self._check_errors(ret))
+            raise ConnectionError(VRepError.create(ret))
         else:
             d = np.array(d, np.float32).reshape((res[1], res[0]))
             d = np.flipud(d)  # the depth buffer is upside-down
