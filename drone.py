@@ -1,17 +1,22 @@
+from enum import Enum
 from math import radians
 from time import sleep
 
-import numpy as np
 import cv2
-
-from pid import PID
-from vrep_object import VRepClient, VRepObject
+import numpy as np
 
 from functions import pinhole_projection
+from pid import PID
+from vrep_object import VRepClient, VRepObject
 
 
 def radius(dist):
     return max(int(150 // dist), 1)
+
+class Visibility(Enum):
+    VISIBLE = 1
+    NOT_VISIBLE = 2
+    UNREACHABLE = 3
 
 class Drone(VRepObject):
     MAX_ANGLE = 45 # degrees
