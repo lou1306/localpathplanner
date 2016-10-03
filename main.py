@@ -62,10 +62,12 @@ client = VRepClient(HOST, PORT)
 goal = client.get_object("Goal")
 end_goal = goal.get_position()
 
+print("Local Path Planner is ready.")
+
 drone = Drone(client)
 drone.lock(goal)
 
-print("Local Path Planner is ready.")
+start_time = datetime.now()
 
 # Main control loop
 while True:
@@ -123,12 +125,18 @@ while True:
         # Distance Transform + Search for optimal pixel
         distances = cv2.distanceTransform(light_zone.astype(np.uint8), cv2.DIST_L1, 3)
         candidates = np.column_stack(np.nonzero(distances == 1))
-        if not candidates.size:
-            print("No valid point for current view.")
-            # TODO wall-following algorithm
-            goal.set_position(end_goal)
-            break
+        if not len(candidates):
+            tries += 1
+            if tries > 2:
+                print("No valid point for current view.")
+                # TODO wall-following algorithm
+                goal.set_position(end_goal)
+                drone.escape(goal)
+                break
+            else:
+                continue
         else:
+            tries = 0
             Y_p, X_p = min(candidates, key=lambda x: np.linalg.norm(np.array([Y, X]) - x) + 0.1 * abs(Y - x[0]))
             new_azimuth, new_elevation = inv_pinhole_projection(X_p, Y_p)
 

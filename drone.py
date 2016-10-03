@@ -117,6 +117,7 @@ class Drone(VRepObject):
             lin_v, ang_v = self._body.get_velocity()
             if all(i < EPS for i in lin_v) and all(i < EPS for i in ang_v):
                 if __debug__:
+                    sleep(0.5)
                     print("...done.")
                 return
             else:
