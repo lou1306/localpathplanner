@@ -8,6 +8,11 @@ import cv2
 
 
 def log_and_retry(func):
+    """
+    A decorator that tries to execute the function until no
+    connection error is raised.
+    """
+
     def func_wrapper(self, *args):
         while True:
             try:
@@ -20,7 +25,7 @@ def log_and_retry(func):
 
 
 class VRepError(Enum):
-    NOVALUE = 1
+    NO_VALUE = 1
     TIMEOUT = 2
     ILLEGAL_OPMODE = 4
     SERVER_ERROR = 8
