@@ -13,20 +13,22 @@ from vrep_object import VRepClient, VRepObject
 def radius(dist):
     return max(int(120 // dist), 1)
 
+
 class Visibility(Enum):
     VISIBLE = 1
     NOT_VISIBLE = 2
     UNREACHABLE = 3
 
+
 class Drone(VRepObject):
-    MAX_ANGLE = 45 # degrees
-    MAX_DEPTH = 10 # meters
-    RADIUS = 0.5 # meters
+    MAX_ANGLE = 45  # degrees
+    MAX_DEPTH = 10  # meters
+    RADIUS = 0.5  # meters
 
     def __init__(self, client: VRepClient):
-        self._client = client
-        self._target = client.get_object("Quadricopter_target")
         self._body = client.get_object("Quadricopter_base")
+        super().__init__(client.id, self._body.handle, "")
+        self._target = client.get_object("Quadricopter_target")
         self._sensor = client.get_object("fast3DLaserScanner_sensor")
 
         self._rotation_pid = PID(0.2, 0.05, 0.2, 1, max_int=3)
@@ -35,11 +37,10 @@ class Drone(VRepObject):
 
         self.total_distance = 0
         self.sensor_offset = - self._body.get_position(self._sensor)
-        self.handle = self._body.handle
 
     def altitude_adjust(self, goal: VRepObject) -> object:
-        GOOD = err =  0.5  # meters
-        while abs(err) >= GOOD:
+        good = err = 0.5  # meters
+        while abs(err) >= good:
             goal_pos = goal.get_position(self._body)
             err = goal_pos[2]  # z-coordinate
             correction = self._altitude_pid.control(err)
@@ -86,21 +87,21 @@ class Drone(VRepObject):
         `sensor_offset`: position of the sensor relative to the drone. Needed for a
         better azimuth value.
         """
-        GOOD = azimuth = 5 # Degrees
-        while abs(azimuth) >= GOOD:
+        good = azimuth = 5  # Degrees
+        while abs(azimuth) >= good:
             euler = self._target.get_orientation()
             __, azimuth, __ = goal.get_spherical(self._body, self.sensor_offset)
             correction_angle = self._rotation_pid.control(azimuth)
             if __debug__:
                 print("Adjusting orientation...", correction_angle)
-            euler[2] += radians(correction_angle) # euler[2] = Yaw
+            euler[2] += radians(correction_angle)  # euler[2] = Yaw
             self._target.set_orientation(euler)
             sleep(1)
         else:
             if __debug__:
                 print("...Adjusted. Goal at {}°".format(azimuth))
             self._rotation_pid.reset()
-            self.stabilize() # Wait for the drone to stabilize on the new angle
+            self.stabilize()  # Wait for the drone to stabilize on the new angle
 
     def lock(self, goal: VRepObject):
         __, azimuth, elevation = goal.get_spherical(self._body, self.sensor_offset)
@@ -110,12 +111,12 @@ class Drone(VRepObject):
         self.rotate_towards(goal)
 
     def stabilize(self):
-        EPS = 0.001
+        eps = 0.001
         if __debug__:
             print("UAV stabilization in progress...")
         while True:
             lin_v, ang_v = self._body.get_velocity()
-            if all(i < EPS for i in lin_v) and all(i < EPS for i in ang_v):
+            if all(i < eps for i in lin_v) and all(i < eps for i in ang_v):
                 if __debug__:
                     sleep(0.5)
                     print("...done.")
@@ -129,16 +130,14 @@ class Drone(VRepObject):
         self.total_distance += np.linalg.norm(correction)
         self._target.set_position(target_pos + correction)
 
-
     def escape(self, goal):
         self.rotate(60)
         __, d = self._sensor.get_depth_buffer()
-        left_space = len(d[d==1])
+        left_space = len(d[d == 1])
         self.rotate(-120)
         __, d = self._sensor.get_depth_buffer()
         right_space = len(d[d == 1])
         go_left = left_space >= right_space
-
 
     def rotate(self, angle: float):
         self._rotation_pid.reset()
