@@ -22,7 +22,7 @@ class Drone(VRepObject):
         self._client = client
         self._target = client.get_object("Quadricopter_target")
         self._body = client.get_object("Quadricopter_base")
-        self._sensor = client.get_depth_sensor("SR4000_sensor")
+        self._sensor = client.get_depth_sensor("fast3DLaserScanner_sensor")
 
         self._rotation_pid = PID(0.2, 0.05, 0.2, 1, max_int=3)
         self._altitude_pid = PID(0.2, 0.02, 0.2, 1)

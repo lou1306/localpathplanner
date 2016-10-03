@@ -4,6 +4,7 @@ from math import degrees, asin, atan2
 
 import numpy as np
 import vrep
+import cv2
 
 
 def log_and_retry(func):
@@ -157,6 +158,7 @@ class VRepDepthSensor(VRepObject):
         else:
             d = np.array(d, np.float32).reshape((res[1], res[0]))
             d = np.flipud(d)  # the depth buffer is upside-down
+            d = cv2.resize(d, (256, 256))   # TODO make codebase resolution-agnostic
             return res, d
 
 
