@@ -55,6 +55,8 @@ camera_settings = {
     "y_angle": 45
 }
 
+tries = 0
+
 # Init connection and objects
 client = VRepClient(HOST, PORT)
 
