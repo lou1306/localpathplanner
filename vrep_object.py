@@ -179,10 +179,21 @@ class VRepClient():
             raise ConnectionError("Connection to {}:{} failed".format(host, port))
 
     def get_object(self, name: str) -> "VRepObject":
-        return VRepObject(self._conn_id, name)
+        ret, handle = vrep.simxGetObjectHandle(self._conn_id, name, vrep.simx_opmode_blocking)
+        if ret != 0:
+            raise ConnectionError(VRepError.create(ret))
+        else:
+            """
+            Kludge ahead.
+            To find out whether the object is a depth sensor, we query its x-resolution (parameter 1002).
+            If we don't get a server error, we know it is a sensor.
+            """
+            ret, __ = vrep.simxGetObjectIntParameter(self._conn_id, handle, 1002, vrep.simx_opmode_blocking)
+            if ret == 0:
+                return VRepDepthSensor(self._conn_id, handle, name)
+            else:
+                return VRepObject(self._conn_id, handle, name)
 
-    def get_depth_sensor(self, name: str) -> VRepDepthSensor:
-        return VRepDepthSensor(self._conn_id, name)
 
     # TODO wrap return codes in exceptions
     def create_dummy(self, pos: List[float], size: float = 0.2):
