@@ -31,7 +31,7 @@ class PID():
         self.I_err = np.zeros(self.dim)
         self.last_err = np.zeros(self.dim)
 
-    def control(self, err: np.array) -> np.array:
+    def control(self, err: np.ndarray) -> np.ndarray:
         """
         Returns a control input based on the error.
         :param err: The error vector, defined as (desired state - current state)

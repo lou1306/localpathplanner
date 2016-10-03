@@ -1,80 +1,15 @@
 from datetime import datetime
-from time import sleep
 
 import cv2
 import numpy as np
 
-from controllers import can_reach
-from functions import pinhole_projection, inv_pinhole_projection, yaw_rotation, pitch_rotation, Direction
-from pid import PID
-from vrep_object import VRepConnection
+from functions import pinhole_projection, inv_pinhole_projection, yaw_rotation, pitch_rotation, find_in_matrix
+from vrep_object import VRepClient
+from drone import Drone
 
 
 def radius(dist):
     return max(int(120 // dist), 1)
-
-
-def line(start, end):
-    def bresenham(start, end):
-        dx, dy = abs(end[0] - start[0]), -abs(end[1] - start[1])
-        err = dx + dy
-        x, y = start
-        while x != end[0] or y != end[1]:
-            yield (x, y)
-            e2 = 2 * err
-            if e2 >= dy:
-                err += dy
-                x += sign_x
-            if e2 <= dx:
-                err += dx
-                y += sign_y
-        yield (end)
-
-    sign = lambda x, y: 2 * int(x < y) - 1
-    """sign(x,y) = -1 iff x<=y; 1 otherwise"""
-    sign_x = sign(start[0], end[0])
-    sign_y = sign(start[1], end[1])
-    if start[0] == end[0]:
-        return ((start[0], i) for i in range(start[1], end[1] + sign_y, sign_y))
-    else:
-        if start[1] == end[1]:
-            return ((i, start[1]) for i in range(start[0], end[0] + sign_x, sign_x))
-        else:
-            return bresenham(start, end)
-
-
-def find_in_matrix(mat, start, end, condition):
-    """
-    Returns the first element of `mat` that satisfies `condition`.
-    `condition` must return a bool.
-    """
-    for X, Y in line(start, end):
-        if condition(mat[Y, X]):
-            return np.array((X, Y)), mat[Y, X]
-    return None, None
-
-
-def find_in_matrix_qualitative(mat, start, direction, condition):
-    """
-    Returns the first element of `mat` that satisfies `condition`.
-    The matrix is scanned according to `direction`.
-    `condition` must return a bool.
-    Throws an IndexError when no element matches the given condition in the
-    given direction.
-    """
-    step = {
-        Direction.N: (0, -1),
-        Direction.NW: (-1, -1),
-        Direction.W: (-1, 0),
-        Direction.SW: (-1, 1),
-        Direction.S: (0, 1),
-        Direction.SE: (1, 1),
-        Direction.E: (0, 1),
-        Direction.NE: (1, -1),
-    }[direction]
-    while not condition(mat[start[1], start[0]]):
-        start += step
-    return None, None
 
 
 def depth_based_dilation(im):
@@ -89,11 +24,10 @@ def depth_based_dilation(im):
     for i in np.arange(1, 0.1, -0.1):
         im_slice = im.copy()
         im_slice[(im_slice <= i - 0.1) | (im_slice > i)] = 0
-        # prova[prova<i-0.1] = 0
 
-        ksize = 2 * radius((i - 0.1) * MAX_DEPTH)
+        ker_size = 2 * radius((i - 0.1) * MAX_DEPTH)
 
-        ker = np.ones((ksize, ksize), np.uint8)
+        ker = np.ones((ker_size, ker_size), np.uint8)
         im_slice = cv2.dilate(im_slice, ker)
 
         # Replace "older" values
@@ -121,117 +55,100 @@ camera_settings = {
     "y_angle": 45
 }
 
-pid = PID(4.5, 0.01, 0.1, 3, 0.1, max_int=10)
-total_distance = 0
+tries = 0
 
 # Init connection and objects
-client = VRepConnection(HOST, PORT)
-while True:
-    try:
-        goal = client.get_object("Goal")
-        target = client.get_object("Quadricopter_target")
-        drone = client.get_object("Quadricopter_base")
-        sensor = client.get_depth_sensor("SR4000_sensor")
+client = VRepClient(HOST, PORT)
 
-        # Save real goal position for later
-        end_goal = goal.get_position()
+# Save target position for later
+goal = client.get_object("Goal")
+end_goal = goal.get_position()
 
-        break
-    except ConnectionError as exc:
-        print(exc)
-        continue
+print("Local Path Planner is ready.")
+
+drone = Drone(client)
+drone.lock(goal)
+
+start_time = datetime.now()
 
 # Main control loop
 while True:
-    try:
-        # Get current data from server
-        goal_pos = goal.get_position()
-        target_pos = target.get_position()
-        sensor_offset = - drone.get_position(sensor.handle)
-        delta = goal.get_position(drone.handle)
-    except ConnectionError as exc:
-        # Server is busy, try again
-        print(exc)
-        continue
-
+    # Get current data from server
+    delta = goal.get_position(drone)
     h_dist = np.linalg.norm(delta[0:2])
     v_dist = abs(delta[2])
 
     if h_dist < EPS:
-        print("Goal reached! Total distance: {} m".format(total_distance))
+        goal_pos = goal.get_position()
         if not np.array_equal(goal_pos, end_goal):
-            try:
-                client.create_dummy(goal.get_position(), 0.5)
-                goal.set_position(end_goal)
-                pid.reset()
-                sleep(3)
-            except ConnectionError as exc:
-                print(exc)
+            if __debug__:
+                print("Goal reached! Total distance: {} m".format(drone.total_distance))
+            goal.set_position(end_goal)
+            drone.reset_controllers()
+            drone.lock(goal)
             continue
         else:
+            print("Goal reached! Total distance: {} m".format(drone.total_distance))
+            print("Total time:", datetime.now() - start_time)
             break
 
-    reachable, d, min_depth, mask = can_reach(goal, target, drone, sensor_offset, sensor)
+    reachable, d, min_depth, mask = drone.can_reach(goal)
+
     if reachable:
-        print("Reachable,", h_dist)
-        # Goal is reachable!
-        try:
-            target_pos = target.get_position()
-            correction = pid.control(-target.get_position(goal.handle))
-            total_distance += np.linalg.norm(correction)
-            target.set_position(target_pos + correction)
-        except ConnectionError:
-            continue
+        if __debug__:
+            print("Reachable,", h_dist)
+        drone.step_towards(goal)
     elif abs(h_dist - min_depth) < RADIUS:
+        goal_pos = goal.get_position()
         if np.array_equal(goal_pos, end_goal):
-            print("Goal considered unsafe.")
+            print("Goal considered unsafe. I'm afraid I can't do that.")
             break
         else:
-            try:
-                print("Temporary goal considered unsafe. Re-evaluating...")
-                goal.set_position(end_goal)
-            except ConnectionError:
-                continue
+            print("Temporary goal considered unsafe. Re-evaluating...")
+            goal.set_position(end_goal)
     else:
-        # Graph replanning point and old waypoint
-        client.create_dummy(goal.get_position(), 0.5)
-        client.create_dummy(target.get_position(), 0.2)
+        drone.stabilize()
+        # Mark current position and old waypoint
+        # client.create_dummy(goal.get_position(), 0.5)
+        # client.create_dummy(target.get_position(), 0.2)
 
         t = datetime.now()
-        dist, azimuth, elevation = goal.get_spherical(drone.handle, sensor_offset)
-        X, Y = pinhole_projection(azimuth, elevation, camera_settings)
+        dist, azimuth, elevation = goal.get_spherical(drone, drone.sensor_offset)
+        X, Y = pinhole_projection(azimuth, elevation)
 
+        # Dilation + Threshold
         light_zone = depth_based_dilation(d)
-        avg_depth = min(0.9, ((min_depth + h_dist) / 2) / MAX_DEPTH)
+        avg_depth = min(0.999, ((min_depth + h_dist) / 2) / MAX_DEPTH)
         light_zone[light_zone <= avg_depth] = 0
         light_zone[light_zone > avg_depth] = 1
 
+        # Distance Transform + Search for optimal pixel
         distances = cv2.distanceTransform(light_zone.astype(np.uint8), cv2.DIST_L1, 3)
         candidates = np.column_stack(np.nonzero(distances == 1))
-        if not candidates.size:
-            print("No valid point for current view.")
-            cv2.imshow('view', (depth_based_dilation(d) * 255).astype(np.uint8))
-            print(min_depth, h_dist)
-            print(avg_depth)
-            cv2.waitKey()
-            # TODO wall-following algorithm
-            goal.set_position(end_goal)
-            break
-
+        if not len(candidates):
+            tries += 1
+            if tries > 2:
+                print("No valid point for current view.")
+                # TODO wall-following algorithm
+                goal.set_position(end_goal)
+                drone.escape(goal)
+                break
+            else:
+                continue
         else:
+            tries = 0
             Y_p, X_p = min(candidates, key=lambda x: np.linalg.norm(np.array([Y, X]) - x) + 0.1 * abs(Y - x[0]))
-            new_azimuth, new_elevation = inv_pinhole_projection(X_p, Y_p, camera_settings)
+            new_azimuth, new_elevation = inv_pinhole_projection(X_p, Y_p)
 
             # Invert the Y coordinates since images use a left-hand system:
             # (0,0) is top-left
 
-            direction = Direction.get(np.array([X, -Y]), relative_to=np.array([X_p, -Y_p]))
             __, val = find_in_matrix(d, (Y_p, X_p), (Y, X), lambda x: x <= avg_depth)
             val = val or min_depth / MAX_DEPTH
 
             new_dist = min(val * MAX_DEPTH + RADIUS, h_dist)
 
-            # TODO check original depth map for depth @ X_p, Y_p
+            # check original depth map for depth @ X_p, Y_p
             if d[Y_p, X_p] < 1 and d[Y_p, X_p] * MAX_DEPTH - new_dist < RADIUS:
                 new_dist = d[Y_p, X_p] - RADIUS
 
@@ -241,30 +158,20 @@ while True:
             unit_vec = pitch_rotation(unit_vec, new_elevation)
 
             new_delta = unit_vec * new_dist
+            goal.set_position(new_delta, drone)
+            goal.duplicate()
+            drone.reset_controllers()
 
-            ### DEBUG LOGS, remove in production ####################
-            print("REPLANNING TIME:", datetime.now() - t)
-            d1 = np.array(d)
-            for y, x in candidates:
-                d1 = cv2.circle(d1, (x, y), 1, 0, 2)
-            d1 = cv2.circle(d1, (X_p, Y_p), 7, 1, -1)
+            if __debug__:
+                print("REPLANNING TIME:", datetime.now() - t)
+                d1 = np.array(d)
+                for y, x in candidates:
+                    d1 = cv2.circle(d1, (x, y), 1, 0, 2)
+                d1 = cv2.circle(d1, (X_p, Y_p), 7, 1, -1)
 
-            print("OLD ", dist, azimuth, elevation)
-            print("NEW ", new_dist, new_azimuth, new_elevation)
-            print("min_depth:", min_depth)
-            print("direction:", direction)
-
-            cv2.imshow('view', d1 + mask)
-            cv2.waitKey()
-
-            ### END DEBUG LOGS ######################################
-            while True:
-                try:
-                    goal.set_position(new_delta, drone.handle)
-                    break
-                except ConnectionError:
-                    continue
-            pid.reset()  # Because the goal has changed
+                print("OLD ", dist, azimuth, elevation)
+                print("NEW ", new_dist, new_azimuth, new_elevation)
+                print("min_depth:", min_depth)
 
 cv2.destroyAllWindows()
 
