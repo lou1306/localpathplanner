@@ -8,14 +8,16 @@ import cv2
 
 
 def log_and_retry(func):
-   def func_wrapper(self, *args):
-       while True:
-           try:
-               return func(self, *args)
-           except ConnectionError as e:
-               print(e)
-               continue
-   return func_wrapper
+    def func_wrapper(self, *args):
+        while True:
+            try:
+                return func(self, *args)
+            except ConnectionError as e:
+                print("Error in ", func, ": ", e, sep="")
+                continue
+
+    return func_wrapper
+
 
 class VRepError(Enum):
     NOVALUE = 1
@@ -33,7 +35,6 @@ class VRepObject():
     """
     BLOCK = vrep.simx_opmode_blocking
 
-
     def __init__(self, client_id: int, name: str):
         self.client_id = client_id
         self.name = name
@@ -42,7 +43,6 @@ class VRepObject():
             self.handle = handle
         else:
             raise ConnectionError(self._check_errors(ret))
-
 
     @staticmethod
     def _check_errors(return_value: int) -> Tuple:
@@ -123,7 +123,6 @@ class VRepObject():
         else:
             raise ConnectionError(self._check_errors(ret))
 
-
     @log_and_retry
     def set_position(self, pos, other: "VRepObject" = None):
         """Sets the position.
@@ -149,7 +148,6 @@ class VRepObject():
 
 
 class VRepDepthSensor(VRepObject):
-
     @log_and_retry
     def get_depth_buffer(self) -> np.ndarray:
         ret, res, d = vrep.simxGetVisionSensorDepthBuffer(self.client_id, self.handle, self.BLOCK)
@@ -158,7 +156,7 @@ class VRepDepthSensor(VRepObject):
         else:
             d = np.array(d, np.float32).reshape((res[1], res[0]))
             d = np.flipud(d)  # the depth buffer is upside-down
-            d = cv2.resize(d, (256, 256))   # TODO make codebase resolution-agnostic
+            d = cv2.resize(d, (256, 256))  # TODO make codebase resolution-agnostic
             return res, d
 
 
