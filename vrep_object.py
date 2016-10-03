@@ -56,6 +56,13 @@ class VRepObject():
                 err for err in VRepError
                 if bool(return_value & err.value))
 
+    @log_and_retry
+    def duplicate(self):
+        ret, handles = vrep.simxCopyPasteObjects(self.client_id, [self.handle], self.BLOCK)
+        if ret == 0:
+            return handles
+        else:
+            raise ConnectionError(self._check_errors(ret))
 
     @log_and_retry
     def get_position(self, other: "VRepObject" = None):
