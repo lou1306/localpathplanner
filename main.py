@@ -9,7 +9,7 @@ from drone import Drone
 
 
 def radius(dist):
-    return max(int(150 // dist), 1)
+    return max(int(120 // dist), 1)
 
 
 def depth_based_dilation(im):

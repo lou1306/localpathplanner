@@ -11,7 +11,7 @@ from vrep_object import VRepClient, VRepObject
 
 
 def radius(dist):
-    return max(int(150 // dist), 1)
+    return max(int(120 // dist), 1)
 
 class Visibility(Enum):
     VISIBLE = 1
