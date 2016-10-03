@@ -8,8 +8,8 @@ from vrep_object import VRepClient
 from drone import Drone
 
 
-def radius(dist):
-    return max(int(120 // dist), 1)
+def radius(distance):
+    return max(int(120 // distance), 1)
 
 
 def depth_based_dilation(im):
@@ -137,13 +137,13 @@ while True:
                 continue
         else:
             tries = 0
-            Y_p, X_p = min(candidates, key=lambda x: np.linalg.norm(np.array([Y, X]) - x) + 0.1 * abs(Y - x[0]))
+            Y_p, X_p = min(candidates, key=lambda c: np.linalg.norm(np.array([Y, X]) - c) + 0.1 * abs(Y - c[0]))
             new_azimuth, new_elevation = inv_pinhole_projection(X_p, Y_p)
 
             # Invert the Y coordinates since images use a left-hand system:
             # (0,0) is top-left
 
-            __, val = find_in_matrix(d, (Y_p, X_p), (Y, X), lambda x: x <= avg_depth)
+            __, val = find_in_matrix(d, (Y_p, X_p), (Y, X), lambda depth: depth <= avg_depth)
             val = val or min_depth / MAX_DEPTH
 
             new_dist = min(val * MAX_DEPTH + RADIUS, h_dist)
