@@ -46,7 +46,7 @@ class VRepError(Enum):
                 if bool(return_value & err.value))
 
 
-class VRepObject():
+class VRepObject:
     """
     Simple wrapper around the V-Rep Remote API
     """
@@ -61,16 +61,19 @@ class VRepObject():
     def duplicate(self):
         ret, handles = vrep.simxCopyPasteObjects(self.client_id, [self.handle], self.BLOCK)
         if ret == 0:
+            # TODO return proper objects, we are not savages.
             return handles
         else:
             raise ConnectionError(VRepError.create(ret))
 
     @log_and_retry
-    def get_position(self, other: "VRepObject" = None):
+    def get_position(self, other: "VRepObject" = None) -> np.ndarray:
         """Retrieve the object position.
+        :type other: VRepObject
 
-        If `handle` is -1, get the absolute position. Otherwise get the position
-        relative to the object with the given handle.
+        :param other: if specified, result will be relative to `other`.
+        If None, retrieve the absolute position.
+
         """
         handle = -1
         if other:
@@ -91,7 +94,7 @@ class VRepObject():
             raise ConnectionError(VRepError.create(ret))
 
     @log_and_retry
-    def get_spherical(self, other: "VRepObject" = None, offset: object = [0, 0, 0]) -> object:
+    def get_spherical(self, other: "VRepObject" = None, offset: object = (0, 0, 0)) -> object:
         """Spherical coordinates of object.
 
         Azimuth is CCW from X axis.
@@ -172,14 +175,14 @@ class VRepDummy(VRepObject):
     pass
 
 
-class VRepClient():
+class VRepClient:
     def __init__(self, host: str, port: int):
-        self._conn_id = vrep.simxStart(host, port, True, True, -100, 5)
-        if self._conn_id == -1:
+        self.id = vrep.simxStart(host, port, True, True, -100, 5)
+        if self.id == -1:
             raise ConnectionError("Connection to {}:{} failed".format(host, port))
 
-    def get_object(self, name: str) -> "VRepObject":
-        ret, handle = vrep.simxGetObjectHandle(self._conn_id, name, vrep.simx_opmode_blocking)
+    def get_object(self, name: str) -> VRepObject or VRepDepthSensor:
+        ret, handle = vrep.simxGetObjectHandle(self.id, name, vrep.simx_opmode_blocking)
         if ret != 0:
             raise ConnectionError(VRepError.create(ret))
         else:
@@ -188,18 +191,17 @@ class VRepClient():
             To find out whether the object is a depth sensor, we query its x-resolution (parameter 1002).
             If we don't get a server error, we know it is a sensor.
             """
-            ret, __ = vrep.simxGetObjectIntParameter(self._conn_id, handle, 1002, vrep.simx_opmode_blocking)
+            ret, __ = vrep.simxGetObjectIntParameter(self.id, handle, 1002, vrep.simx_opmode_blocking)
             if ret == 0:
-                return VRepDepthSensor(self._conn_id, handle, name)
+                return VRepDepthSensor(self.id, handle, name)
             else:
-                return VRepObject(self._conn_id, handle, name)
-
+                return VRepObject(self.id, handle, name)
 
     # TODO wrap return codes in exceptions
     def create_dummy(self, pos: List[float], size: float = 0.2):
-        ret, dummy_handle = vrep.simxCreateDummy(self._conn_id, size, None, vrep.simx_opmode_blocking)
-        vrep.simxSetObjectPosition(self._conn_id, dummy_handle, -1, pos, vrep.simx_opmode_blocking)
+        ret, dummy_handle = vrep.simxCreateDummy(self.id, size, None, vrep.simx_opmode_blocking)
+        vrep.simxSetObjectPosition(self.id, dummy_handle, -1, pos, vrep.simx_opmode_blocking)
         # return VRepDummy(self._conn_id, dummy_handle)
 
     def close_connection(self):
-        vrep.simxFinish(self._conn_id)
+        vrep.simxFinish(self.id)
