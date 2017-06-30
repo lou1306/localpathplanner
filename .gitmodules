@@ -1,0 +1,12 @@
+[submodule "modules/mavlink"]
+	path = modules/mavlink
+	url = https://github.com/mavlink/mavlink.git
+[submodule "modules/pymavlink"]
+	path = modules/pymavlink
+	url = https://github.com/ArduPilot/pymavlink
+[submodule "modules/dronekit-python"]
+	path = modules/dronekit-python
+	url = https://github.com/dronekit/dronekit-python.git
+[submodule "modules/dronekit-sitl"]
+	path = modules/dronekit-sitl
+	url = https://github.com/dronekit/dronekit-sitl.git
