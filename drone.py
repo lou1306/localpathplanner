@@ -79,7 +79,7 @@ class Drone(VRepObject):
         self._rotation_pid.reset()
 
     def rotate_towards(self, goal: VRepObject):
-        """Rotates the drone until it points towards the goal.
+        """Rotate the drone until it points towards the goal.
 
         Actually, the function rotates the `target` object which is then followed
         by the `drone` (inside V-REP).
@@ -125,12 +125,15 @@ class Drone(VRepObject):
                 sleep(0.05)
 
     def step_towards(self, goal: VRepObject):
+        """Move the drone towards the goal.
+        """
         target_pos = self._target.get_position()
         correction = self._pid.control(-self._target.get_position(goal))
         self.total_distance += np.linalg.norm(correction)
         self._target.set_position(target_pos + correction)
 
     def escape(self, goal):
+        # TODO implement wall-following algorithm
         self.rotate(60)
         __, d = self._sensor.get_depth_buffer()
         left_space = len(d[d == 1])
@@ -140,6 +143,11 @@ class Drone(VRepObject):
         go_left = left_space >= right_space
 
     def rotate(self, angle: float):
+        """Perform an arbitrary yaw rotation.
+        
+        Args:
+            angle (float): Yaw angle, in degrees. Positive = rotates to the left
+        """
         self._rotation_pid.reset()
         while abs(angle) > 2:
             euler = self._target.get_orientation()
