@@ -1,9 +1,18 @@
+from __future__ import division
+
 from enum import Enum
-from math import atan2, degrees
-from typing import Tuple
+from math import atan2, degrees, sqrt, sin, cos, radians
+#from typing import Tuple
 
 import numpy as np
 
+
+R_Ea = 6378137.0
+R_Eb = 6356752.31
+f = 1/298.257223563
+
+e = sqrt(R_Ea**2 - R_Eb**2)/R_Ea
+N_E = lambda x: R_Ea/sqrt(1- e**2 * sin(radians(x))**2)
 
 class Direction(Enum):
     E = 0
@@ -49,19 +58,22 @@ def old_pinhole_projection(azimuth, elevation, settings):
     return X, Y
 
 
-def pinhole_projection(azimuth: float, elevation: float) -> Tuple[int, int]:
+def pinhole_projection(azimuth, elevation):
+    # type: (float, float) -> Tuple[int.int]
     X = round(-5.650462986 * azimuth + 130.5760642)
     Y = round(-5.650462986 * elevation + 130.5760642)
-    return X, Y
+    return int(X), int(Y)
 
 
-def old_inv_pinhole_projection(X: int, Y: int) -> Tuple[float, float]:
+def old_inv_pinhole_projection(X, Y):
+    # type: (int, int) -> Tuple[float, float]
     azimuth = settings["x_angle"] * (1 - 2 * X / settings["x_res"])
     elevation = settings["y_angle"] * (1 - 1.8 * Y / settings["y_res"])
     return azimuth, elevation
 
 
-def inv_pinhole_projection(X: int, Y: int) -> Tuple[float, float]:
+def inv_pinhole_projection(X, Y):
+    # type: (int, int) -> Tuple[float, float]
     azimuth = (X - 130.5760642) / -5.650462986
     elevation = (Y - 130.5760642) / -5.650462986
     return azimuth, elevation
@@ -85,7 +97,7 @@ def yaw_rotation(vec, angle):
         [s, c, 0],
         [0, 0, 1]
     ])
-    return yaw_matrix @ vec
+    return np.dot(yaw_matrix, vec)
 
 
 def pitch_rotation(vec, angle):
@@ -95,7 +107,7 @@ def pitch_rotation(vec, angle):
         [0, 1, 0],
         [-s, 9, c]
     ])
-    return vec @ pitch_matrix
+    return np.dot(vec, pitch_matrix)
 
 def line(start, end):
     def bresenham(start, end):
@@ -158,3 +170,15 @@ def find_in_matrix_qualitative(mat, start, direction, condition):
     while not condition(mat[start[1], start[0]]):
         start += step
     return None, None
+
+def gps2ecef(gps):
+    """ gps = [lat, lon, h]"""
+    N = N_E(gps[1])
+    sin_lat, cos_lat = sin(radians(gps[0])), cos(radians(gps[0]))
+    sin_lon, cos_lon = sin(radians(gps[1])), cos(radians(gps[1]))
+
+    x = (N + gps[2]) * cos_lon * cos_lat
+    y = (N + gps[2]) * cos_lon * sin_lat
+    z = (N * (1-e**2) + gps[2]) * sin_lon
+
+    return np.array([x,y,z])
