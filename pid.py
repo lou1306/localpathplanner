@@ -1,10 +1,13 @@
+from __future__ import division
 import numpy as np
 
 class PID():
     """
     Simple PID controller.
     """
-    def __init__(self, Kp: float, Ki: float, Kd: float=0, n: int=1, max_norm: float=0, max_int:float = np.inf):
+    def __init__(self, Kp, Ki, Kd=0, n=1, max_norm=0, max_int=np.inf):
+        #type: (float, float, float, int, float, float)
+
         """
         Initializes the controller.
 
@@ -31,7 +34,7 @@ class PID():
         self.I_err = np.zeros(self.dim)
         self.last_err = np.zeros(self.dim)
 
-    def control(self, err: np.ndarray) -> np.ndarray:
+    def control(self, err):
         """
         Returns a control input based on the error.
         :param err: The error vector, defined as (desired state - current state)

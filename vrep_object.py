@@ -1,11 +1,16 @@
+from __future__ import division, print_function
+
 from enum import Enum
-from typing import Tuple, List
 from math import degrees, asin, atan2
 
 import numpy as np
 import vrep
 import cv2
+import sys
 
+if sys.version_info < (3,0):
+    class ConnectionError(OSError):
+        pass
 
 def log_and_retry(func):
     """
@@ -34,7 +39,7 @@ class VRepError(Enum):
     INIT_ERROR = 64
 
     @staticmethod
-    def create(return_value: int) -> Tuple:
+    def create(return_value):
         """
         Returns all the errors associated with a return value.
         """
@@ -46,13 +51,14 @@ class VRepError(Enum):
                 if bool(return_value & err.value))
 
 
-class VRepObject:
+class VRepObject(object):
     """
     Simple wrapper around the V-Rep Remote API
     """
     BLOCK = vrep.simx_opmode_blocking
 
-    def __init__(self, client_id: int, handle: int, name: str):
+    def __init__(self, client_id, handle, name):
+        # type: (int, int, str)
         self.client_id = client_id
         self.name = name
         self.handle = handle
@@ -67,7 +73,7 @@ class VRepObject:
             raise ConnectionError(VRepError.create(ret))
 
     @log_and_retry
-    def get_position(self, other: "VRepObject" = None) -> np.ndarray:
+    def get_position(self, other= None):
         """Retrieve the object position.
         :type other: VRepObject
 
@@ -86,7 +92,7 @@ class VRepObject:
             raise ConnectionError(VRepError.create(ret))
 
     @log_and_retry
-    def get_velocity(self) -> Tuple:
+    def get_velocity(self):
         ret, linear, angular = vrep.simxGetObjectVelocity(self.client_id, self.handle, self.BLOCK)
         if ret == 0:
             return np.array(linear, np.float32), np.array(angular, np.float32)
@@ -94,7 +100,7 @@ class VRepObject:
             raise ConnectionError(VRepError.create(ret))
 
     @log_and_retry
-    def get_spherical(self, other: "VRepObject" = None, offset: object = (0, 0, 0)) -> object:
+    def get_spherical(self, other= None, offset=(0, 0, 0)):
         """Spherical coordinates of object.
 
         Azimuth is CCW from X axis.
@@ -120,7 +126,7 @@ class VRepObject:
                 continue
 
     @log_and_retry
-    def get_orientation(self, other: "VRepObject" = None):
+    def get_orientation(self, other=None):
         """Retrieve the object orientation (as Euler angles)
         """
         handle = -1
@@ -135,7 +141,7 @@ class VRepObject:
             raise ConnectionError(VRepError.create(ret))
 
     @log_and_retry
-    def set_position(self, pos, other: "VRepObject" = None):
+    def set_position(self, pos, other=None):
         """Sets the position.
 
         pos: 3-valued list or np.array (x,y,z coordinates in meters)
@@ -149,7 +155,7 @@ class VRepObject:
             raise ConnectionError(VRepError.create(ret))
 
     @log_and_retry
-    def set_orientation(self, euler: Tuple[float, float, float]):
+    def set_orientation(self, euler):
         """
         Sets the absolute orientation of the object
         """
@@ -160,7 +166,7 @@ class VRepObject:
 
 class VRepDepthSensor(VRepObject):
     @log_and_retry
-    def get_depth_buffer(self) -> np.ndarray:
+    def get_depth_buffer(self):
         ret, res, d = vrep.simxGetVisionSensorDepthBuffer(self.client_id, self.handle, self.BLOCK)
         if ret != 0:
             raise ConnectionError(VRepError.create(ret))
@@ -175,13 +181,15 @@ class VRepDummy(VRepObject):
     pass
 
 
-class VRepClient:
-    def __init__(self, host: str, port: int):
+class VRepClient(object):
+    def __init__(self, host, port):
+        # type: (str, int)
         self.id = vrep.simxStart(host, port, True, True, -100, 5)
         if self.id == -1:
             raise ConnectionError("Connection to {}:{} failed".format(host, port))
 
-    def get_object(self, name: str) -> VRepObject or VRepDepthSensor:
+    def get_object(self, name):
+        # type: (str)
         ret, handle = vrep.simxGetObjectHandle(self.id, name, vrep.simx_opmode_blocking)
         if ret != 0:
             raise ConnectionError(VRepError.create(ret))
@@ -198,7 +206,7 @@ class VRepClient:
                 return VRepObject(self.id, handle, name)
 
     # TODO wrap return codes in exceptions
-    def create_dummy(self, pos: List[float], size: float = 0.2):
+    def create_dummy(self, pos, size = 0.2):
         ret, dummy_handle = vrep.simxCreateDummy(self.id, size, None, vrep.simx_opmode_blocking)
         vrep.simxSetObjectPosition(self.id, dummy_handle, -1, pos, vrep.simx_opmode_blocking)
         # return VRepDummy(self._conn_id, dummy_handle)
