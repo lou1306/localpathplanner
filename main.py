@@ -1,7 +1,10 @@
+from __future__ import division
+
 from datetime import datetime
 
 import cv2
 import numpy as np
+import sys, os
 
 from functions import pinhole_projection, inv_pinhole_projection, yaw_rotation, pitch_rotation, find_in_matrix
 from vrep_object import VRepClient
@@ -54,6 +57,41 @@ camera_settings = {
     "x_angle": 45,
     "y_angle": 45
 }
+
+#
+# print("Start simulator (SITL)")
+# import dronekit_sitl
+# sitl = dronekit_sitl.start_default()
+# connection_string = sitl.connection_string()
+# #connection_string = "tcp:127.0.0.1:5760"
+#
+#
+# # Import DroneKit-Python
+# from dronekit import connect, VehicleMode
+# # Connect to the Vehicle.
+# print(u"Connecting to vehicle on: {0:s}".format(connection_string, ))
+# vehicle = connect(connection_string, wait_ready=True)
+#
+# # Get some vehicle attributes (state)
+# print("Get some vehicle attribute values:")
+# print(u" GPS: {}".format(vehicle.gps_0))
+# print(u" Battery: {}".format(vehicle.battery))
+# print(u" Last Heartbeat: {}".format(vehicle.last_heartbeat))
+# print(u" Is Armable?: {}".format(vehicle.is_armable))
+# print(u" System status: {}".format(vehicle.system_status.state))
+# print(u" Mode: {}".format(vehicle.mode.name))  # settable
+
+# # Close vehicle object before exiting script
+# vehicle.close()
+#
+# # Shut down simulator
+# sitl.stop()
+# print("Completed")
+# exit(0)
+
+
+
+
 
 tries = 0
 
