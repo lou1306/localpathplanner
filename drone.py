@@ -1,9 +1,15 @@
+from __future__ import division, print_function
+
 from enum import Enum
 from math import radians
 from time import sleep
+#from urllib.request import urlopen
+import json
+
 
 import cv2
 import numpy as np
+
 
 from functions import pinhole_projection
 from pid import PID
@@ -25,9 +31,9 @@ class Drone(VRepObject):
     MAX_DEPTH = 10  # meters
     RADIUS = 0.5  # meters
 
-    def __init__(self, client: VRepClient):
+    def __init__(self, client):
         self._body = client.get_object("Quadricopter_base")
-        super().__init__(client.id, self._body.handle, "")
+        super(Drone, self).__init__(client.id, self._body.handle, "")
         self._target = client.get_object("Quadricopter_target")
         self._sensor = client.get_object("fast3DLaserScanner_sensor")
 
@@ -38,7 +44,7 @@ class Drone(VRepObject):
         self.total_distance = 0
         self.sensor_offset = - self._body.get_position(self._sensor)
 
-    def altitude_adjust(self, goal: VRepObject) -> object:
+    def altitude_adjust(self, goal):
         good = err = 0.5  # meters
         while abs(err) >= good:
             goal_pos = goal.get_position(self._body)
@@ -55,7 +61,7 @@ class Drone(VRepObject):
             self._altitude_pid.reset()
             sleep(2)  # Wait for the drone to stabilize
 
-    def can_reach(self, goal: VRepObject):
+    def can_reach(self, goal):
         dist, azimuth, elevation = goal.get_spherical(self._body, self.sensor_offset)
         delta = goal.get_position(self._target)
         h_dist = np.linalg.norm(delta[0:2])
@@ -78,7 +84,7 @@ class Drone(VRepObject):
         self._altitude_pid.reset()
         self._rotation_pid.reset()
 
-    def rotate_towards(self, goal: VRepObject):
+    def rotate_towards(self, goal):
         """Rotates the drone until it points towards the goal.
 
         Actually, the function rotates the `target` object which is then followed
@@ -99,11 +105,11 @@ class Drone(VRepObject):
             sleep(1)
         else:
             if __debug__:
-                print("...Adjusted. Goal at {}°".format(azimuth))
+                print("...Adjusted. Goal at {} degrees".format(azimuth))
             self._rotation_pid.reset()
             self.stabilize()  # Wait for the drone to stabilize on the new angle
 
-    def lock(self, goal: VRepObject):
+    def lock(self, goal):
         __, azimuth, elevation = goal.get_spherical(self._body, self.sensor_offset)
         X, Y = pinhole_projection(azimuth, elevation)
         if abs(elevation) > self.MAX_ANGLE or not 0 <= Y < 256:
@@ -124,7 +130,7 @@ class Drone(VRepObject):
             else:
                 sleep(0.05)
 
-    def step_towards(self, goal: VRepObject):
+    def step_towards(self, goal):
         target_pos = self._target.get_position()
         correction = self._pid.control(-self._target.get_position(goal))
         self.total_distance += np.linalg.norm(correction)
@@ -139,7 +145,7 @@ class Drone(VRepObject):
         right_space = len(d[d == 1])
         go_left = left_space >= right_space
 
-    def rotate(self, angle: float):
+    def rotate(self, angle):
         self._rotation_pid.reset()
         while abs(angle) > 2:
             euler = self._target.get_orientation()
@@ -149,3 +155,31 @@ class Drone(VRepObject):
             self._target.set_orientation(euler)
             sleep(1)
         self.stabilize()
+
+
+class MPDrone(Drone):
+    URL = "http://127.0.0.1:56781/{}"
+    def __init__(self):
+        pass
+
+
+    def _get_mavlink(self):
+        with urlopen(self.URL.format("mavlink/")) as req:
+            return json.loads(req.read().decode('utf-8'))
+
+    def get_position(self, other = None):
+        mavlink = self._get_mavlink()
+        lat = mavlink["GPS_RAW_INT"]["msg"]["lat"] / 10**7
+        lon = mavlink["GPS_RAW_INT"]["msg"]["lon"] / 10**7
+        alt = mavlink["GPS_RAW_INT"]["msg"]["alt"] / 10**3
+        return lat, lon, alt
+
+    def rotate_towards(self, goal):
+        lat, lon, alt = goal
+        string = "guided?lat={}&lon={}&alt={}".format(lat,lon,alt)
+        with urlopen(self.URL.format(string)) as req:
+            print(req.read().decode('utf-8'))
+
+
+
+
