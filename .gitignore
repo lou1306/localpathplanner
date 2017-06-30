@@ -2,3 +2,7 @@
 vrep.py
 vrepConst.py
 __pycache__/
+venv/
+modules/
+venv27/
+*.pyc
