@@ -113,15 +113,19 @@ def line(start, end):
                 y += sign_y
         yield (end)
 
-    sign = lambda x, y: 2 * int(x < y) - 1
+    def sign(x, y):
     """sign(x,y) = -1 iff x<=y; 1 otherwise"""
+        return 2 * int(x < y) - 1
+
     sign_x = sign(start[0], end[0])
     sign_y = sign(start[1], end[1])
     if start[0] == end[0]:
-        return ((start[0], i) for i in range(start[1], end[1] + sign_y, sign_y))
+        return ((start[0], i)
+                for i in range(start[1], end[1] + sign_y, sign_y))
     else:
         if start[1] == end[1]:
-            return ((i, start[1]) for i in range(start[0], end[0] + sign_x, sign_x))
+            return ((i, start[1])
+                    for i in range(start[0], end[0] + sign_x, sign_x))
         else:
             return bresenham(start, end)
 
