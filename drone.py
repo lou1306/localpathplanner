@@ -46,7 +46,8 @@ class Drone(VRepObject):
             correction = self._altitude_pid.control(err)
             if __debug__:
                 print("Adjusting altitude...", correction)
-            self._target.set_position(self._target.get_position() + np.array([0, 0, correction]))
+            self._target.set_position(self._target.get_position() +
+                                      np.array([0, 0, correction]))
             self.total_distance += np.linalg.norm(correction)
             sleep(1)
         else:
@@ -56,7 +57,8 @@ class Drone(VRepObject):
             sleep(2)  # Wait for the drone to stabilize
 
     def can_reach(self, goal: VRepObject):
-        dist, azimuth, elevation = goal.get_spherical(self._body, self.sensor_offset)
+        dist, azimuth, elevation = goal.get_spherical(self._body,
+                                                      self.sensor_offset)
         delta = goal.get_position(self._target)
         h_dist = np.linalg.norm(delta[0:2])
 
@@ -71,7 +73,9 @@ class Drone(VRepObject):
             # Mask has no white pixel.
             self.lock(goal)
             return self.can_reach(goal)
-        return h_dist < 1 or dist - min_depth < -0.5 or min_depth == self.MAX_DEPTH, d, min_depth, mask
+        return h_dist < 1 or \
+            dist - min_depth < -0.5 or \
+            min_depth == self.MAX_DEPTH, d, min_depth, mask
 
     def reset_controllers(self):
         self._pid.reset()
@@ -81,16 +85,17 @@ class Drone(VRepObject):
     def rotate_towards(self, goal: VRepObject):
         """Rotate the drone until it points towards the goal.
 
-        Actually, the function rotates the `target` object which is then followed
-        by the `drone` (inside V-REP).
+        Actually, the function rotates the `target` object which is then
+        followed by the `drone` (inside V-REP).
 
-        `sensor_offset`: position of the sensor relative to the drone. Needed for a
-        better azimuth value.
+        `sensor_offset`: position of the sensor relative to the drone.
+        Needed for a better azimuth value.
         """
         good = azimuth = 5  # Degrees
         while abs(azimuth) >= good:
             euler = self._target.get_orientation()
-            __, azimuth, __ = goal.get_spherical(self._body, self.sensor_offset)
+            __, azimuth, __ = goal.get_spherical(self._body,
+                                                 self.sensor_offset)
             correction_angle = self._rotation_pid.control(azimuth)
             if __debug__:
                 print("Adjusting orientation...", correction_angle)
@@ -101,10 +106,11 @@ class Drone(VRepObject):
             if __debug__:
                 print("...Adjusted. Goal at {}°".format(azimuth))
             self._rotation_pid.reset()
-            self.stabilize()  # Wait for the drone to stabilize on the new angle
+            self.stabilize()  # Wait for the drone to stabilize on new angle
 
     def lock(self, goal: VRepObject):
-        __, azimuth, elevation = goal.get_spherical(self._body, self.sensor_offset)
+        __, azimuth, elevation = goal.get_spherical(self._body,
+                                                    self.sensor_offset)
         X, Y = pinhole_projection(azimuth, elevation)
         if abs(elevation) > self.MAX_ANGLE or not 0 <= Y < 256:
             self.altitude_adjust(goal)
@@ -146,7 +152,7 @@ class Drone(VRepObject):
         """Perform an arbitrary yaw rotation.
         
         Args:
-            angle (float): Yaw angle, in degrees. Positive = rotates to the left
+            angle (float): Yaw angle, in degrees. Positive = rotates left
         """
         self._rotation_pid.reset()
         while abs(angle) > 2:
