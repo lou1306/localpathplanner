@@ -42,11 +42,11 @@ HOST = "127.0.0.1"
 PORT = 11111
 
 # Maximum depth sensed by the camera
-MAX_DEPTH = 10
-EPS = 0.2
-MAX_ANGLE = 45
+MAX_DEPTH = 10  #m
+EPS = 0.2       #m
+MAX_ANGLE = 45  #deg
 
-RADIUS = 0.5
+RADIUS = 0.5    #m
 
 camera_settings = {
     "x_res": 256,

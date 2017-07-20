@@ -2,3 +2,4 @@
 vrep.py
 vrepConst.py
 __pycache__/
+remoteApi.dylib
