@@ -18,7 +18,7 @@ def log_and_retry(func):
             try:
                 return func(self, *args)
             except ConnectionError as e:
-                print("Error in ", func, ": ", e, sep="")
+                print("Error in {}: {}".format(func, e))
                 continue
 
     return func_wrapper
