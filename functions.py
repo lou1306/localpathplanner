@@ -43,25 +43,28 @@ class Direction(Enum):
             return cls.SE
 
 
-def old_pinhole_projection(azimuth, elevation, settings):
-    X = round(settings["x_res"] * (1 - 2 * azimuth / settings["x_angle"]) / 2)
-    Y = round(settings["y_res"] * (1 - 1.8 * elevation / settings["y_angle"]) / 2)
-    return X, Y
+def pinhole_projection(azimuth, elevation):
+    v = 256 // 45
+    X = v * azimuth + 128
+    Y = v * elevation + 128
+    # X = round(["x_res"] * (1 - 2 * azimuth / settings["x_angle"]) / 2)
+    # Y = round(["y_res"] * (1 - 1.8 * elevation / settings["y_angle"]) / 2)
+    return round(X), round(Y)
 
 
-def pinhole_projection(azimuth: float, elevation: float) -> Tuple[int, int]:
+def apinhole_projection(azimuth: float, elevation: float) -> Tuple[int, int]:
     X = round(-5.650462986 * azimuth + 130.5760642)
     Y = round(-5.650462986 * elevation + 130.5760642)
     return X, Y
 
 
-def old_inv_pinhole_projection(X: int, Y: int) -> Tuple[float, float]:
-    azimuth = settings["x_angle"] * (1 - 2 * X / settings["x_res"])
-    elevation = settings["y_angle"] * (1 - 1.8 * Y / settings["y_res"])
+def inv_pinhole_projection(X: int, Y: int) -> Tuple[float, float]:
+    azimuth = -(X - 128) * 45 / 256
+    elevation = -(Y - 128) * 45 / 256
     return azimuth, elevation
 
 
-def inv_pinhole_projection(X: int, Y: int) -> Tuple[float, float]:
+def ainv_pinhole_projection(X: int, Y: int) -> Tuple[float, float]:
     azimuth = (X - 130.5760642) / -5.650462986
     elevation = (Y - 130.5760642) / -5.650462986
     return azimuth, elevation
@@ -97,6 +100,7 @@ def pitch_rotation(vec, angle):
     ])
     return vec @ pitch_matrix
 
+
 def line(start, end):
     def bresenham(start, end):
         dx, dy = abs(end[0] - start[0]), -abs(end[1] - start[1])
@@ -114,7 +118,7 @@ def line(start, end):
         yield (end)
 
     def sign(x, y):
-    """sign(x,y) = -1 iff x<=y; 1 otherwise"""
+        """sign(x,y) = -1 iff x<=y; 1 otherwise"""
         return 2 * int(x < y) - 1
 
     sign_x = sign(start[0], end[0])

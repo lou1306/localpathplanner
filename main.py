@@ -1,11 +1,14 @@
 from datetime import datetime
+from vrep_object import VRepClient
+from drone import Drone
 
 import cv2
 import numpy as np
 
-from functions import pinhole_projection, inv_pinhole_projection, yaw_rotation, pitch_rotation, find_in_matrix
-from vrep_object import VRepClient
-from drone import Drone
+from functions import (pinhole_projection, inv_pinhole_projection,
+                       apinhole_projection, ainv_pinhole_projection,
+                       yaw_rotation, pitch_rotation,
+                       find_in_matrix)
 
 
 def radius(distance):
@@ -16,7 +19,8 @@ def depth_based_dilation(im):
     """Dilates a float image according to pixel depth.
 
     The input image is sliced by pixel intensity: (1, 0.9], (0.9, 0.8] etc.
-    Each slice is dilated by a kernel which grows in size as the values get smaller.
+    Each slice is dilated by a kernel which grows in size as the values
+    get smaller.
     The slices are fused back together, lower slice overwrite higher ones.
     """
     acc = np.ones_like(im)
@@ -113,8 +117,12 @@ while True:
         # client.create_dummy(target.get_position(), 0.2)
 
         t = datetime.now()
-        dist, azimuth, elevation = goal.get_spherical(drone, drone.sensor_offset)
+        dist, azimuth, elevation = goal.get_spherical(drone,
+                                                      drone.sensor_offset)
         X, Y = pinhole_projection(azimuth, elevation)
+        X1, Y1 = apinhole_projection(azimuth, elevation)
+
+        print(X, Y, "\n", X1, Y1, drone.sensor_offset)
 
         # Dilation + Threshold
         light_zone = depth_based_dilation(d)
@@ -137,20 +145,26 @@ while True:
                 continue
         else:
             tries = 0
-            Y_p, X_p = min(candidates, key=lambda c: np.linalg.norm(np.array([Y, X]) - c) + 0.1 * abs(Y - c[0]))
+            X_p, Y_p = min(candidates,
+                           key=lambda c:
+                           np.linalg.norm(np.array([X, Y]) - c) +
+                           0.1 * abs(X - c[0]))
             new_azimuth, new_elevation = inv_pinhole_projection(X_p, Y_p)
+            az1, ev1 = ainv_pinhole_projection(X_p, Y_p)
+
+            print(new_azimuth, new_elevation, "\n", az1, ev1)
 
             # Invert the Y coordinates since images use a left-hand system:
             # (0,0) is top-left
 
-            __, val = find_in_matrix(d, (Y_p, X_p), (Y, X), lambda depth: depth <= avg_depth)
+            __, val = find_in_matrix(d, (X_p, Y_p), (X, Y), lambda depth: depth <= avg_depth)
             val = val or min_depth / MAX_DEPTH
 
             new_dist = min(val * MAX_DEPTH + RADIUS, h_dist)
 
             # check original depth map for depth @ X_p, Y_p
-            if d[Y_p, X_p] < 1 and d[Y_p, X_p] * MAX_DEPTH - new_dist < RADIUS:
-                new_dist = d[Y_p, X_p] - RADIUS
+            if d[X_p, Y_p] < 1 and d[X_p, Y_p] * MAX_DEPTH - new_dist < RADIUS:
+                new_dist = d[X_p, Y_p] - RADIUS
 
             # Apply two 3d rotations to the unit vector so it points to the new goal
             unit_vec = np.array([1, 0, 0], np.float32)
