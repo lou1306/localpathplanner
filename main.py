@@ -130,16 +130,16 @@ while True:
 
             if __debug__:
                 print("REPLANNING TIME:", datetime.now() - t)
-                d1 = np.array(d)
-                for y, x in candidates:
-                    d1 = cv2.circle(d1, (x, y), 1, 0, 2)
-                d1 = cv2.circle(d1, (X_p, Y_p), 7, 1, -1)
+                # # Uncomment to write the current depth map to disk
+                # d1 = np.array(d)
+                # for y, x in candidates:
+                #     d1 = cv2.circle(d1, (x, y), 1, 0, 2)
+                # d1 = cv2.circle(d1, (X_p, Y_p), 7, 128, -1)
+                # cv2.imwrite("{}.png".format(datetime.now()), d1 * 256)
 
                 print("OLD ", dist, azimuth, elevation)
                 print("NEW ", new_dist, new_azimuth, new_elevation)
                 print("min_depth:", min_depth)
-
-cv2.destroyAllWindows()
 
 # Close the connection
 client.close_connection()
