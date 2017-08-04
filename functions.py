@@ -14,14 +14,14 @@ class Direction(Enum):
     SW = 5
     S = 6
     SE = 7
-    O = 8
+    NONE = 8
 
     @classmethod
     def get(cls, point, relative_to=None):
         if relative_to is None:
             relative_to = np.zeros_like(point)
         if np.array_equal(point, relative_to):
-            return cls.O
+            return cls.NONE
         diff = point - relative_to
         angle = degrees(atan2(diff[1], diff[0]))
         # There HAS to be a better way... Oh well:
@@ -95,7 +95,7 @@ def pitch_rotation(vec, angle):
     pitch_matrix = np.array([
         [c, 0, s],
         [0, 1, 0],
-        [-s, 9, c]
+        [-s, 0, c]
     ])
     return vec @ pitch_matrix
 
