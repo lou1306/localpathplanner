@@ -62,8 +62,9 @@ while True:
     if reachable:
         if __debug__:
             print("Reachable,", h_dist)
+
         drone.step_towards(goal)
-    elif abs(h_dist - min_depth) < RADIUS:
+    elif abs(h_dist - min_depth) < drone.radius:
         goal_pos = goal.get_position()
         if np.array_equal(goal_pos, end_goal):
             print("Goal considered unsafe. I'm afraid I can't do that.")
@@ -81,13 +82,10 @@ while True:
         dist, azimuth, elevation = goal.get_spherical(drone,
                                                       drone.sensor_offset)
         X, Y = pinhole_projection(azimuth, elevation)
-        X1, Y1 = apinhole_projection(azimuth, elevation)
-
-        print(X, Y, "\n", X1, Y1, drone.sensor_offset)
 
         # Dilation + Threshold
-        light_zone = depth_based_dilation(d)
-        avg_depth = min(0.999, ((min_depth + h_dist) / 2) / MAX_DEPTH)
+        light_zone = drone.sensor.get_dilated_depth_buffer(drone.radius_to_pixels)
+        avg_depth = min(0.999, ((min_depth + h_dist) / 2) / drone.sensor.max_depth)
         light_zone[light_zone <= avg_depth] = 0
         light_zone[light_zone > avg_depth] = 1
 
@@ -106,30 +104,23 @@ while True:
                 continue
         else:
             tries = 0
-            X_p, Y_p = min(candidates,
+            Y_p, X_p = min(candidates,
                            key=lambda c:
-                           np.linalg.norm(np.array([X, Y]) - c) +
-                           0.1 * abs(X - c[0]))
+                           np.linalg.norm(np.array([Y, X]) - c) +
+                           0.1 * abs(Y - c[0]))
             new_azimuth, new_elevation = inv_pinhole_projection(X_p, Y_p)
-            az1, ev1 = ainv_pinhole_projection(X_p, Y_p)
-
-            print(new_azimuth, new_elevation, "\n", az1, ev1)
-
-            # Invert the Y coordinates since images use a left-hand system:
-            # (0,0) is top-left
 
             __, val = find_in_matrix(d, (X_p, Y_p), (X, Y), lambda depth: depth <= avg_depth)
-            val = val or min_depth / MAX_DEPTH
+            val = val or min_depth / drone.sensor.max_depth
 
-            new_dist = min(val * MAX_DEPTH + RADIUS, h_dist)
+            new_dist = min(val * drone.sensor.max_depth + drone.radius, h_dist)
 
             # check original depth map for depth @ X_p, Y_p
-            if d[X_p, Y_p] < 1 and d[X_p, Y_p] * MAX_DEPTH - new_dist < RADIUS:
-                new_dist = d[X_p, Y_p] - RADIUS
+            if d[X_p, Y_p] < 1 and d[X_p, Y_p] * drone.sensor.max_depth - new_dist < drone.radius:
+                new_dist = d[X_p, Y_p] * drone.sensor.max_depth - drone.radius
 
             # Apply two 3d rotations to the unit vector so it points to the new goal
-            unit_vec = np.array([1, 0, 0], np.float32)
-            unit_vec = yaw_rotation(unit_vec, new_azimuth)
+            unit_vec = yaw_rotation(UNIT_VEC, new_azimuth)
             unit_vec = pitch_rotation(unit_vec, new_elevation)
 
             new_delta = unit_vec * new_dist
