@@ -45,13 +45,15 @@ while True:
         goal_pos = goal.get_position()
         if not np.array_equal(goal_pos, end_goal):
             if __debug__:
-                print("Goal reached! Total distance: {} m".format(drone.total_distance))
+                print("Goal reached! Total distance: {} m".format(
+                    drone.total_distance))
             goal.set_position(end_goal)
             drone.reset_controllers()
             drone.lock(goal)
             continue
         else:
-            print("Goal reached! Total distance: {} m".format(drone.total_distance))
+            print("Goal reached! Total distance: {} m".format(
+                drone.total_distance))
             print("Total time:", datetime.now() - start_time)
             break
 
