@@ -43,28 +43,27 @@ class Direction(Enum):
             return cls.SE
 
 
-def pinhole_projection(azimuth, elevation):
-    v = 256 // 45
-    X = v * azimuth + 128
-    Y = v * elevation + 128
+def npinhole_projection(azimuth, elevation):
+    X = 256 * (azimuth / 90) + 128
+    Y = 256 * (elevation / 90) + 128
     # X = round(["x_res"] * (1 - 2 * azimuth / settings["x_angle"]) / 2)
     # Y = round(["y_res"] * (1 - 1.8 * elevation / settings["y_angle"]) / 2)
-    return round(X), round(Y)
+    return int(round(X)), int(round(Y))
 
 
-def apinhole_projection(azimuth: float, elevation: float) -> Tuple[int, int]:
+def pinhole_projection(azimuth: float, elevation: float) -> Tuple[int, int]:
     X = round(-5.650462986 * azimuth + 130.5760642)
     Y = round(-5.650462986 * elevation + 130.5760642)
     return X, Y
 
 
-def inv_pinhole_projection(X: int, Y: int) -> Tuple[float, float]:
-    azimuth = -(X - 128) * 45 / 256
-    elevation = -(Y - 128) * 45 / 256
+def ninv_pinhole_projection(X: int, Y: int) -> Tuple[float, float]:
+    azimuth = (X - 128) * 90 / 256
+    elevation = (Y - 128) * 90 / 256
     return azimuth, elevation
 
 
-def ainv_pinhole_projection(X: int, Y: int) -> Tuple[float, float]:
+def inv_pinhole_projection(X: int, Y: int) -> Tuple[float, float]:
     azimuth = (X - 130.5760642) / -5.650462986
     elevation = (Y - 130.5760642) / -5.650462986
     return azimuth, elevation
