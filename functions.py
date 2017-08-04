@@ -14,14 +14,14 @@ class Direction(Enum):
     SW = 5
     S = 6
     SE = 7
-    O = 8
+    NONE = 8
 
     @classmethod
     def get(cls, point, relative_to=None):
         if relative_to is None:
             relative_to = np.zeros_like(point)
         if np.array_equal(point, relative_to):
-            return cls.O
+            return cls.NONE
         diff = point - relative_to
         angle = degrees(atan2(diff[1], diff[0]))
         # There HAS to be a better way... Oh well:
@@ -43,10 +43,12 @@ class Direction(Enum):
             return cls.SE
 
 
-def old_pinhole_projection(azimuth, elevation, settings):
-    X = round(settings["x_res"] * (1 - 2 * azimuth / settings["x_angle"]) / 2)
-    Y = round(settings["y_res"] * (1 - 1.8 * elevation / settings["y_angle"]) / 2)
-    return X, Y
+def npinhole_projection(azimuth, elevation):
+    X = 256 * (azimuth / 90) + 128
+    Y = 256 * (elevation / 90) + 128
+    # X = round(["x_res"] * (1 - 2 * azimuth / settings["x_angle"]) / 2)
+    # Y = round(["y_res"] * (1 - 1.8 * elevation / settings["y_angle"]) / 2)
+    return int(round(X)), int(round(Y))
 
 
 def pinhole_projection(azimuth: float, elevation: float) -> Tuple[int, int]:
@@ -55,9 +57,9 @@ def pinhole_projection(azimuth: float, elevation: float) -> Tuple[int, int]:
     return X, Y
 
 
-def old_inv_pinhole_projection(X: int, Y: int) -> Tuple[float, float]:
-    azimuth = settings["x_angle"] * (1 - 2 * X / settings["x_res"])
-    elevation = settings["y_angle"] * (1 - 1.8 * Y / settings["y_res"])
+def ninv_pinhole_projection(X: int, Y: int) -> Tuple[float, float]:
+    azimuth = (X - 128) * 90 / 256
+    elevation = (Y - 128) * 90 / 256
     return azimuth, elevation
 
 
@@ -93,9 +95,10 @@ def pitch_rotation(vec, angle):
     pitch_matrix = np.array([
         [c, 0, s],
         [0, 1, 0],
-        [-s, 9, c]
+        [-s, 0, c]
     ])
     return vec @ pitch_matrix
+
 
 def line(start, end):
     def bresenham(start, end):
@@ -113,15 +116,19 @@ def line(start, end):
                 y += sign_y
         yield (end)
 
-    sign = lambda x, y: 2 * int(x < y) - 1
-    """sign(x,y) = -1 iff x<=y; 1 otherwise"""
+    def sign(x, y):
+        """sign(x,y) = -1 iff x<=y; 1 otherwise"""
+        return 2 * int(x < y) - 1
+
     sign_x = sign(start[0], end[0])
     sign_y = sign(start[1], end[1])
     if start[0] == end[0]:
-        return ((start[0], i) for i in range(start[1], end[1] + sign_y, sign_y))
+        return ((start[0], i)
+                for i in range(start[1], end[1] + sign_y, sign_y))
     else:
         if start[1] == end[1]:
-            return ((i, start[1]) for i in range(start[0], end[0] + sign_x, sign_x))
+            return ((i, start[1])
+                    for i in range(start[0], end[0] + sign_x, sign_x))
         else:
             return bresenham(start, end)
 
