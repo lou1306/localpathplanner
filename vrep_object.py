@@ -20,7 +20,6 @@ def log_and_retry(func):
             except ConnectionError as e:
                 print("Error in {}: {}".format(func, e))
                 continue
-
     return func_wrapper
 
 
@@ -94,6 +93,16 @@ class VRepObject:
             raise ConnectionError(VRepError.create(ret))
 
     @log_and_retry
+    def get_bbox(self) -> Tuple[np.ndarray, np.ndarray]:
+
+        coords = tuple(
+            vrep.simxGetObjectFloatParameter(self.client_id,
+                                             self.handle, i, self.BLOCK)[1]
+            for i in range(15, 21))
+        return np.array(coords[:3], np.float32), \
+               np.array(coords[3:], np.float32)
+
+    @log_and_retry
     def get_spherical(self, other: "VRepObject" = None, offset: object = (0, 0, 0)) -> object:
         """Spherical coordinates of object.
 
@@ -159,6 +168,31 @@ class VRepObject:
 
 
 class VRepDepthSensor(VRepObject):
+
+    def __init__(self, client_id: int, handle: int, name: str):
+        """Initialize sensor and get specific information
+
+        Initialize
+        """
+        super().__init__(client_id, handle, name)
+        # Assume that the sensor returns a square image
+        __, self.res = vrep.simxGetObjectIntParameter(
+            client_id,
+            handle,
+            vrep.sim_visionintparam_resolution_x,
+            self.BLOCK)
+        __, self.max_depth = vrep.simxGetObjectFloatParameter(
+            client_id,
+            handle,
+            vrep.sim_visionfloatparam_far_clipping,
+            self.BLOCK)
+        __, angle_radians = vrep.simxGetObjectFloatParameter(
+            client_id,
+            handle,
+            vrep.sim_visionfloatparam_perspective_angle,
+            self.BLOCK)
+        self.angle = round(degrees(angle_radians), 3)
+
     @log_and_retry
     def get_depth_buffer(self) -> np.ndarray:
         ret, res, d = vrep.simxGetVisionSensorDepthBuffer(self.client_id, self.handle, self.BLOCK)
@@ -169,6 +203,33 @@ class VRepDepthSensor(VRepObject):
             d = np.flipud(d)  # the depth buffer is upside-down
             d = cv2.resize(d, (256, 256))  # TODO make codebase resolution-agnostic
             return res, d
+
+    def get_dilated_depth_buffer(self, radius_f) -> np.ndarray:
+        """Dilates a float image according to pixel depth.
+
+        The input image is sliced by pixel intensity: (1, 0.9], (0.9, 0.8] etc.
+        Each slice is dilated by a kernel which grows in size as the values
+        get smaller. The slices are then fused back together, lower slice
+        overwrite higher ones.
+
+        :param radius_f: a function that converts meters to pixels
+        :return: The dilated depth map
+        """
+        __, im = self.get_depth_buffer()
+        acc = np.ones_like(im)
+
+        for i in np.arange(1, 0.1, -0.1):
+            im_slice = im.copy()
+            im_slice[(im_slice <= i - 0.1) | (im_slice > i)] = 0
+
+            ker_size = 2 * radius_f((i - 0.1) * self.max_depth)
+
+            ker = np.ones((ker_size, ker_size), np.uint8)
+            im_slice = cv2.dilate(im_slice, ker)
+
+            # Replace "older" values
+            acc = np.where(im_slice != 0, im_slice, acc)
+        return acc
 
 
 class VRepDummy(VRepObject):
