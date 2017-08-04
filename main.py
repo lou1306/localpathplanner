@@ -6,38 +6,8 @@ import cv2
 import numpy as np
 
 from functions import (pinhole_projection, inv_pinhole_projection,
-                       apinhole_projection, ainv_pinhole_projection,
                        yaw_rotation, pitch_rotation,
                        find_in_matrix)
-
-
-def radius(distance):
-    return max(int(120 // distance), 1)
-
-
-def depth_based_dilation(im):
-    """Dilates a float image according to pixel depth.
-
-    The input image is sliced by pixel intensity: (1, 0.9], (0.9, 0.8] etc.
-    Each slice is dilated by a kernel which grows in size as the values
-    get smaller.
-    The slices are fused back together, lower slice overwrite higher ones.
-    """
-    acc = np.ones_like(im)
-
-    for i in np.arange(1, 0.1, -0.1):
-        im_slice = im.copy()
-        im_slice[(im_slice <= i - 0.1) | (im_slice > i)] = 0
-
-        ker_size = 2 * radius((i - 0.1) * MAX_DEPTH)
-
-        ker = np.ones((ker_size, ker_size), np.uint8)
-        im_slice = cv2.dilate(im_slice, ker)
-
-        # Replace "older" values
-        acc = np.where(im_slice != 0, im_slice, acc)
-    return acc
-
 
 #############################################################
 
@@ -45,19 +15,8 @@ def depth_based_dilation(im):
 HOST = "127.0.0.1"
 PORT = 11111
 
-# Maximum depth sensed by the camera
-MAX_DEPTH = 10
-EPS = 0.2
-MAX_ANGLE = 45
-
-RADIUS = 0.5
-
-camera_settings = {
-    "x_res": 256,
-    "y_res": 256,
-    "x_angle": 45,
-    "y_angle": 45
-}
+EPS = 0.2 # meters
+UNIT_VEC = np.array([1, 0, 0], np.float32)
 
 tries = 0
 
