@@ -39,7 +39,16 @@ At the moment the implementation does not support the "wall-following" scenario,
 i.e. a situation where most of the field of view is obstructed by an obstacle.
 This situation requires a different algorithm, such as the one proposed in [2].
 
+## Further reading
+
+* [My Master's Thesis (Italian only)](https://github.com/lou1306/localpathplanner/blob/master/docs/tesi.pdf)
+
+* Slides from my Master's dissertation: [Italian](https://github.com/lou1306/localpathplanner/blob/master/docs/presentazione.pdf), [English](https://github.com/lou1306/localpathplanner/blob/master/docs/presentazione-EN.pdf)
+
+* The [poster](https://github.com/lou1306/localpathplanner/blob/master/docs/poster.pdf) we presented at [COSIT2017](http://www.cosit2017.org/)
+
 ## Related work
 
 [1] S. Hrabar, “Reactive obstacle avoidance for rotorcraft UAVs,” IEEE Int. Conf. Intell. Robot. Syst., no. August, pp. 4967–4974, 2011.
+
 [2] T. Merz and F. Kendoul, “Beyond visual range obstacle avoidance and infrastructure inspection by an autonomous helicopter,” IEEE Int. Conf. Intell. Robot. Syst., no. August 2016, pp. 4953–4960, 2011.
